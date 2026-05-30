@@ -59,7 +59,7 @@ class ChargePoint(cp):
             "model": charge_point_model,
             "last_seen": datetime.now(timezone.utc).isoformat(),
         }
-        return call_result.BootNotification(
+        return call_result.BootNotificationPayload(
             current_time=datetime.now(timezone.utc).isoformat(),
             interval=30,
             status=RegistrationStatus.accepted,
@@ -69,19 +69,19 @@ class ChargePoint(cp):
     async def on_heartbeat(self):
         if self.id in charger_status:
             charger_status[self.id]["last_seen"] = datetime.now(timezone.utc).isoformat()
-        return call_result.Heartbeat(current_time=datetime.now(timezone.utc).isoformat())
+        return call_result.HeartbeatPayload(current_time=datetime.now(timezone.utc).isoformat())
 
     @on(Action.StatusNotification)
     async def on_status_notification(self, connector_id, error_code, status, **kwargs):
         logger.info(f"[{self.id}] Estado → {status}")
         if self.id in charger_status:
             charger_status[self.id]["status"] = status
-        return call_result.StatusNotification()
+        return call_result.StatusNotificationPayload()
 
     @on(Action.Authorize)
     async def on_authorize(self, id_tag, **kwargs):
         logger.info(f"[{self.id}] Authorize → {id_tag}")
-        return call_result.Authorize(id_tag_info={"status": "Accepted"})
+        return call_result.AuthorizePayload(id_tag_info={"status": "Accepted"})
 
     @on(Action.StartTransaction)
     async def on_start_transaction(self, connector_id, id_tag, meter_start, timestamp, **kwargs):
@@ -92,7 +92,7 @@ class ChargePoint(cp):
             charger_status[self.id]["active_transaction"] = tx_id
             charger_status[self.id]["session_user"] = id_tag
             charger_status[self.id]["meter_start"] = meter_start
-        return call_result.StartTransaction(
+        return call_result.StartTransactionPayload(
             transaction_id=tx_id,
             id_tag_info={"status": "Accepted"},
         )
@@ -106,7 +106,7 @@ class ChargePoint(cp):
                 charger_status[self.id]["current_kwh"] = round(float(wh) / 1000, 2)
         except Exception:
             pass
-        return call_result.MeterValues()
+        return call_result.MeterValuesPayload()
 
     @on(Action.StopTransaction)
     async def on_stop_transaction(self, meter_stop, timestamp, transaction_id, **kwargs):
@@ -119,7 +119,7 @@ class ChargePoint(cp):
             charger_status[self.id].pop("active_transaction", None)
             charger_status[self.id].pop("session_user", None)
             charger_status[self.id].pop("current_wh", None)
-        return call_result.StopTransaction(id_tag_info={"status": "Accepted"})
+        return call_result.StopTransactionPayload(id_tag_info={"status": "Accepted"})
 
 
 @app.websocket("/ocpp/{charge_point_id}")
@@ -158,7 +158,7 @@ async def remote_start(charge_point_id: str, id_tag: str = "USER-APP-001"):
     charger = connected_chargers.get(charge_point_id)
     if not charger:
         return {"error": "Cargador no conectado"}
-    request = call.RemoteStartTransaction(connector_id=1, id_tag=id_tag)
+    request = call.RemoteStartTransactionPayload(connector_id=1, id_tag=id_tag)
     response = await charger.call(request)
     return {"status": response.status}
 
@@ -171,6 +171,6 @@ async def remote_stop(charge_point_id: str):
     tx_id = charger_status.get(charge_point_id, {}).get("active_transaction")
     if not tx_id:
         return {"error": "Sin sesión activa"}
-    request = call.RemoteStopTransaction(transaction_id=tx_id)
+    request = call.RemoteStopTransactionPayload(transaction_id=tx_id)
     response = await charger.call(request)
     return {"status": response.status}

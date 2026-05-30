@@ -26,7 +26,7 @@ class SimulatedCharger(cp):
         self.log = logging.getLogger(charger_id)
 
     async def boot(self):
-        response = await self.call(call.BootNotification(
+        response = await self.call(call.BootNotificationPayload(
             charge_point_model="SimCargador-v1",
             charge_point_vendor=f"CPO-Col ({self.owner})",
         ))
@@ -36,7 +36,7 @@ class SimulatedCharger(cp):
         return ok
 
     async def set_status(self, status):
-        await self.call(call.StatusNotification(
+        await self.call(call.StatusNotificationPayload(
             connector_id=1, error_code="NoError", status=status
         ))
 
@@ -47,12 +47,12 @@ class SimulatedCharger(cp):
         self.log.info(f"Nuevo usuario: {user_tag}")
         await self.set_status(ChargePointStatus.preparing)
 
-        auth = await self.call(call.Authorize(id_tag=user_tag))
+        auth = await self.call(call.AuthorizePayload(id_tag=user_tag))
         if auth.id_tag_info["status"] != "Accepted":
             await self.set_status(ChargePointStatus.available)
             return
 
-        start = await self.call(call.StartTransaction(
+        start = await self.call(call.StartTransactionPayload(
             connector_id=1,
             id_tag=user_tag,
             meter_start=meter_start,
@@ -68,7 +68,7 @@ class SimulatedCharger(cp):
         for _ in range(duration):
             await asyncio.sleep(8)
             energy += random.randint(500, 2000)
-            await self.call(call.MeterValues(
+            await self.call(call.MeterValuesPayload(
                 connector_id=1,
                 transaction_id=tx_id,
                 meter_value=[{
@@ -79,7 +79,7 @@ class SimulatedCharger(cp):
             kwh = (energy - meter_start) / 1000
             self.log.info(f"Energía: {kwh:.2f} kWh")
 
-        await self.call(call.StopTransaction(
+        await self.call(call.StopTransactionPayload(
             meter_stop=energy,
             timestamp=datetime.now(timezone.utc).isoformat(),
             transaction_id=tx_id,
