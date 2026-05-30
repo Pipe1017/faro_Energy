@@ -91,13 +91,17 @@ class SimulatedCharger(cp):
 
     async def run(self):
         if not await self.boot():
-            return
+            raise Exception("Boot fallido")
         await self.set_status(ChargePointStatus.available)
         while True:
             wait = random.randint(15, 45)
             self.log.info(f"Disponible — próxima sesión en {wait}s")
             await asyncio.sleep(wait)
-            await self.simulate_session()
+            try:
+                await self.simulate_session()
+            except Exception as e:
+                self.log.warning(f"Error en sesión: {e}")
+                await self.set_status(ChargePointStatus.available)
 
 
 async def connect_charger(config):

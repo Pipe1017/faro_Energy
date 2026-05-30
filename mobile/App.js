@@ -21,24 +21,28 @@ const OWNER_LABEL = {
 };
 
 export default function App() {
-  const [chargers, setChargers]     = useState([]);
-  const [loading, setLoading]       = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [serverOk, setServerOk]     = useState(null);
+  const [chargers, setChargers]       = useState([]);
+  const [refreshing, setRefreshing]   = useState(false); // solo para pull-to-refresh
+  const [lastUpdate, setLastUpdate]   = useState(null);
+  const [serverOk, setServerOk]       = useState(null);
 
-  const fetchStatus = async () => {
-    setLoading(true);
+  const fetchStatus = async (showSpinner = false) => {
+    if (showSpinner) setRefreshing(true);
     try {
       const res  = await fetch(`${API_URL}/status`);
       const data = await res.json();
       const list = Object.entries(data.chargers || {}).map(([id, info]) => ({ id, ...info }));
-      setChargers(list);
+      // actualiza sin reemplazar — evita el flash visual
+      setChargers(prev => {
+        const igual = JSON.stringify(prev) === JSON.stringify(list);
+        return igual ? prev : list;
+      });
       setLastUpdate(new Date().toLocaleTimeString('es-CO'));
       setServerOk(true);
     } catch {
       setServerOk(false);
     } finally {
-      setLoading(false);
+      if (showSpinner) setRefreshing(false);
     }
   };
 
@@ -65,8 +69,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    fetchStatus(true);
+    const interval = setInterval(() => fetchStatus(false), 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -141,7 +145,7 @@ export default function App() {
         keyExtractor={(item) => item.id}
         renderItem={renderCharger}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchStatus} tintColor="#3b82f6" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchStatus(true)} tintColor="#3b82f6" />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🔌</Text>
