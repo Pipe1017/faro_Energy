@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 
 // Cambia esta IP si tu red cambia (corre: ipconfig getifaddr en0)
-const API_URL = 'http://192.168.1.3:8000';
+const API_URL = 'https://preseason-constable-sappiness.ngrok-free.dev';
 
 const STATUS_COLOR = {
   Available: '#22c55e',
@@ -150,7 +150,7 @@ export default function App() {
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🔌</Text>
             <Text style={styles.emptyText}>
-              {loading ? 'Conectando...' : serverOk === false ? 'Servidor no disponible' : 'Sin cargadores'}
+              {refreshing ? 'Conectando...' : serverOk === false ? 'Servidor no disponible' : 'Sin cargadores'}
             </Text>
             <Text style={styles.emptyHint}>
               {serverOk === false
