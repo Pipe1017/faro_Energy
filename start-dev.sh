@@ -2,6 +2,7 @@
 # Arranca todo el entorno de desarrollo CPO Colombia
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+SIM="$ROOT/simulator"
 
 echo ""
 echo "========================================"
@@ -15,14 +16,15 @@ docker compose -f "$ROOT/docker-compose.yml" up -d
 echo ""
 
 # 2. Backend FastAPI
-echo "▶ Iniciando backend FastAPI en puerto 8000..."
-osascript -e "tell application \"Terminal\" to do script \"cd '$ROOT/backend' && source venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000\""
+echo "▶ Iniciando backend FastAPI..."
+osascript -e "tell application \"Terminal\" to do script \"cd '$ROOT/backend' && source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000\""
 
-sleep 2
+sleep 3
 
-# 3. Simulador OCPP
-echo "▶ Iniciando simulador de cargadores..."
-osascript -e "tell application \"Terminal\" to do script \"cd '$ROOT/simulator' && source venv/bin/activate && python3 simulate.py\""
+# 3. Cargadores — uno por terminal
+# Los simuladores ahora se gestionan internamente desde el backend.
+# Cada cargador que se agrega en la app auto-arranca su simulador.
+# No se necesitan terminales externas.
 
 sleep 2
 
@@ -32,15 +34,16 @@ osascript -e "tell application \"Terminal\" to do script \"ngrok http --url=pres
 
 sleep 2
 
-# 5. Expo
+# 5. Expo — sin flags, funciona con WiFi y escaneo de QR
 echo "▶ Iniciando app móvil con Expo..."
 osascript -e "tell application \"Terminal\" to do script \"cd '$ROOT/mobile' && npx expo start\""
 
 echo ""
-echo "✅ Todo listo:"
-echo "   Backend:   https://preseason-constable-sappiness.ngrok-free.dev"
-echo "   API Docs:  https://preseason-constable-sappiness.ngrok-free.dev/docs"
-echo "   Estado:    https://preseason-constable-sappiness.ngrok-free.dev/status"
+echo "✅ Todo listo — 8 terminales abiertas en Terminal.app"
+echo ""
+echo "   Backend:  https://preseason-constable-sappiness.ngrok-free.dev"
+echo "   API Docs: https://preseason-constable-sappiness.ngrok-free.dev/docs"
 echo ""
 echo "   Escanea el QR de Expo con la cámara del iPhone"
+echo "   (el iPhone y el Mac deben estar en la misma WiFi)"
 echo ""
