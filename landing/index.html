@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faro Energy — Carga eléctrica inteligente en Colombia</title>
+  <meta name="description" content="Conecta tu cargador eléctrico, cobra automáticamente y gestiona cada sesión en tiempo real. La plataforma CPO para Colombia." />
+
+  <!-- Open Graph — preview en WhatsApp, LinkedIn, Twitter -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:title"       content="Faro Energy — Carga eléctrica inteligente" />
+  <meta property="og:description" content="Conecta tu parqueadero a la red de carga eléctrica de Colombia. Cobra automáticamente por cada kWh. Medellín, 2026." />
+  <meta property="og:image"       content="https://faroenergy.lat/LogoFondoBlanco.png" />
+  <meta property="og:image:width"  content="800" />
+  <meta property="og:image:height" content="400" />
+  <meta property="og:url"         content="https://faroenergy.lat" />
+  <meta property="og:locale"      content="es_CO" />
+
+  <!-- WhatsApp usa og:image — también funciona para iMessage, Telegram -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:title"       content="Faro Energy — Carga eléctrica inteligente" />
+  <meta name="twitter:description" content="Conecta tu parqueadero a la red de carga eléctrica de Colombia." />
+  <meta name="twitter:image"       content="https://faroenergy.lat/LogoFondoBlanco.png" />
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+
+  <!-- ───────────────────────────── NAV ───────────────────────────────── -->
+  <nav class="nav">
+    <div class="container nav__inner">
+      <a href="#" class="nav__logo">
+        <img src="/LogoFondoOScuro.png" alt="Faro Energy" style="height:98px;width:auto;margin:-18px -10px;" />
+      </a>
+
+      <!-- Desktop: tres acciones -->
+      <ul class="nav__links" id="nav-links">
+        <li><a href="#como-funciona">Software</a></li>
+        <li><a href="#precios">Precios</a></li>
+        <li><a href="#conductores">Para conductores</a></li>
+        <li><a href="#contacto" class="btn btn--primary nav__cta">Solicitar demo</a></li>
+      </ul>
+
+      <a href="#contacto" class="btn btn--primary nav__mobile-cta">Solicitar demo</a>
+      <button class="nav__burger" id="nav-burger" aria-label="Menú">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ───────────────────────────── HERO ──────────────────────────────── -->
+  <section>
+    <div class="container">
+      <div class="hero">
+        <div class="hero__content">
+          <div class="aud-section__badge" style="margin-bottom:20px;">Software de gestión · SaaS</div>
+          <h1 class="hero__title">
+            El sistema operativo<br/>
+            para tu red de<br/>
+            <em>cargadores eléctricos</em>
+          </h1>
+          <p class="hero__subtitle">
+            Conecta tus cargadores, cobra automáticamente a los conductores
+            y recibe reportes en tiempo real. Pagas mensual por cargador — sin complicaciones técnicas.
+          </p>
+
+          <ul class="hero__bullets">
+            <li>Dashboard multi-sede en tiempo real</li>
+            <li>Cobro automático por kWh — sin intervención manual</li>
+            <li>Compatible con cualquier cargador del mercado</li>
+          </ul>
+
+          <div class="hero__actions">
+            <a href="#contacto" class="btn btn--primary">Solicitar demo gratuita</a>
+            <a href="#precios" class="btn btn--outline">Ver precios</a>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:center;align-items:center;height:100%;">
+          <div class="phone" style="max-width:270px;">
+            <div class="phone__notch"></div>
+            <img src="/DashboardDeGanancias.png" alt="Dashboard de gestión Faro Energy" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────── CÓMO FUNCIONA (OPERADORES) ──────────────────────── -->
+  <section class="section section--alt" id="como-funciona">
+    <div class="container">
+      <div class="section__header section__header--center reveal">
+        <div class="label">Cómo funciona</div>
+        <h2>En tres pasos tienes tu red operando</h2>
+        <p class="centered">Para constructoras, hoteles, parqueaderos y empresas con flota.</p>
+      </div>
+      <div class="steps">
+        <div class="steps__card reveal">
+          <span class="steps__card-num">01</span>
+          <h3>Conectas tus cargadores</h3>
+          <p>Cualquier cargador con estándar OCPP 1.6 se conecta a Faro en minutos. Desde 7 kW con toma 220V hasta 150 kW DC. Sin cambiar el hardware que ya tienes.</p>
+        </div>
+        <div class="steps__card reveal">
+          <span class="steps__card-num">02</span>
+          <h3>Los conductores pagan solos</h3>
+          <p>Escanean el QR, cargan su vehículo y el cobro se procesa automáticamente. Tú no intervenes en nada — el dinero llega directamente a tu cuenta.</p>
+        </div>
+        <div class="steps__card reveal">
+          <span class="steps__card-num">03</span>
+          <h3>Ves todo desde un dashboard</h3>
+          <p>Ingresos por sede, kWh entregados, sesiones activas, reportes mensuales. Si tienes 3 sedes o 30, todo en una sola pantalla.</p>
+        </div>
+      </div>
+
+      <!-- Imagen cargadores en estacionamiento corporativo -->
+      <img src="/CargadoresEnEstacionamiento.png"
+           alt="Cargadores eléctricos instalados en parqueadero corporativo"
+           class="reveal"
+           style="width:100%;border-radius:20px;margin-top:48px;object-fit:cover;max-height:420px;box-shadow:0 24px 64px rgba(0,0,0,0.4);" />
+    </div>
+  </section>
+
+  <!-- ─────────────────────── PRECIOS ──────────────────────────────────── -->
+  <section class="section" id="precios">
+    <div class="container">
+      <div class="section__header section__header--center reveal">
+        <div class="label">Planes</div>
+        <h2>Precio claro desde el primer día</h2>
+        <p class="centered">Pagas mensual por cargador conectado. Sin contratos largos, sin sorpresas.</p>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- Plan Básico -->
+        <div class="pricing-card reveal">
+          <div class="pricing-card__name">Básico</div>
+          <div class="pricing-card__desc">Para propietarios de 1 a 3 cargadores</div>
+          <div class="pricing-card__price">
+            <span class="pricing-card__currency">$</span>120.000
+            <span class="pricing-card__period">/cargador/mes</span>
+          </div>
+          <ul class="pricing-card__features">
+            <li>App para conductores</li>
+            <li>Cobro automático por kWh</li>
+            <li>Dashboard básico</li>
+            <li>Reportes mensuales</li>
+            <li>+ 5% por transacción</li>
+          </ul>
+          <a href="#contacto" class="btn btn--outline" style="width:100%;justify-content:center;margin-top:auto;">Empezar</a>
+        </div>
+
+        <!-- Plan Negocio -->
+        <div class="pricing-card pricing-card--featured reveal">
+          <div class="pricing-card__badge">Más popular</div>
+          <div class="pricing-card__name">Negocio</div>
+          <div class="pricing-card__desc">Para operadores de 4 a 20 cargadores</div>
+          <div class="pricing-card__price">
+            <span class="pricing-card__currency">$</span>90.000
+            <span class="pricing-card__period">/cargador/mes</span>
+          </div>
+          <ul class="pricing-card__features">
+            <li>Todo lo del plan Básico</li>
+            <li>Dashboard multi-sede</li>
+            <li>Soporte técnico prioritario</li>
+            <li>Facturación electrónica</li>
+            <li>Control remoto de cargadores</li>
+            <li>+ 4% por transacción</li>
+          </ul>
+          <a href="#contacto" class="btn btn--primary" style="width:100%;justify-content:center;margin-top:auto;">Solicitar demo</a>
+        </div>
+
+        <!-- Plan Empresa -->
+        <div class="pricing-card reveal">
+          <div class="pricing-card__name">Empresa</div>
+          <div class="pricing-card__desc">Para redes de 20+ cargadores</div>
+          <div class="pricing-card__price" style="font-size:28px;padding:20px 0;">
+            A negociar
+          </div>
+          <ul class="pricing-card__features">
+            <li>Todo lo del plan Negocio</li>
+            <li>Integración con sistemas propios</li>
+            <li>API acceso completo</li>
+            <li>OCPI 2.2.1 (interoperabilidad)</li>
+            <li>SLA garantizado</li>
+            <li>Comisión a negociar</li>
+          </ul>
+          <a href="#contacto" class="btn btn--outline" style="width:100%;justify-content:center;margin-top:auto;">Hablar con ventas</a>
+        </div>
+      </div>
+
+      <p style="text-align:center;color:#7a7468;font-size:13px;margin-top:24px;">
+        Todos los planes incluyen 3 meses de prueba gratuita para nuevos operadores.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────── SECCIÓN CONDUCTORES ───────────────────────────── -->
+  <section class="aud-section aud-section--conductor" id="conductores">
+    <div class="container">
+      <div class="aud-section__inner">
+        <div class="aud-section__text">
+          <div class="aud-section__badge">Para conductores</div>
+          <h2 class="aud-section__title">Carga donde estés,<br/>paga solo lo que usas</h2>
+          <p class="aud-section__intro">Encuentra cargadores cerca en el mapa, ve el precio antes de llegar y paga exactamente lo que consumiste. Sin efectivo, sin terminales.</p>
+          <div class="steps" style="margin-top:4px;">
+            <div class="steps__card reveal">
+              <span class="steps__card-num">01</span>
+              <h3>Agrega tu tarjeta una sola vez</h3>
+              <p>Regístrate y guarda tu tarjeta. Tus datos quedan protegidos por Wompi.</p>
+            </div>
+            <div class="steps__card reveal">
+              <span class="steps__card-num">02</span>
+              <h3>Encuentra el cargador en el mapa</h3>
+              <p>Ve precio, potencia y distancia antes de salir. Filtra por barrio o tipo de conector.</p>
+            </div>
+            <div class="steps__card reveal">
+              <span class="steps__card-num">03</span>
+              <h3>Carga y paga automático</h3>
+              <p>Escanea el QR, carga tu vehículo. El cobro exacto se procesa solo al terminar.</p>
+            </div>
+          </div>
+          <a href="#contacto" class="btn btn--primary" style="margin-top:28px;">Registrarme como conductor</a>
+        </div>
+        <div class="phone-slider">
+          <div class="phone-slider__track">
+            <div class="phone-slider__slide">
+              <div class="phone"><div class="phone__notch"></div>
+                <img src="/MapaDeCargadores.jpeg" alt="Mapa de cargadores" />
+              </div>
+            </div>
+            <div class="phone-slider__slide">
+              <div class="phone"><div class="phone__notch"></div>
+                <img src="/ResuemnCOnsumoUsuario.jpeg" alt="Resumen de consumo" />
+              </div>
+            </div>
+          </div>
+          <div class="phone-slider__dots">
+            <span></span><span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────── SECCIÓN DUEÑOS ────────────────────────────────── -->
+  <section class="aud-section aud-section--dueno" id="como-funciona">
+    <div class="container">
+      <div class="aud-section__inner aud-section__inner--rev">
+        <div class="phone-slider">
+          <div class="phone-slider__track">
+            <div class="phone-slider__slide">
+              <div class="phone"><div class="phone__notch"></div>
+                <img src="/DashboardDeGanancias.png" alt="Dashboard de ganancias" />
+              </div>
+            </div>
+            <div class="phone-slider__slide">
+              <div class="phone"><div class="phone__notch"></div>
+                <img src="/GananciadeDuenoDeCargador.jpeg" alt="Panel del dueño" />
+              </div>
+            </div>
+          </div>
+          <div class="phone-slider__dots"><span></span><span></span></div>
+        </div>
+        <div class="aud-section__text">
+          <div class="aud-section__badge">Invierte</div>
+          <h2 class="aud-section__title">Tu parqueadero<br/>genera ingresos</h2>
+          <p class="aud-section__intro">Instala un cargador, conéctalo a Faro y empieza a recibir pagos automáticos cada vez que alguien cargue. Tú pones el precio.</p>
+          <div class="steps" style="margin-top:4px;">
+            <div class="steps__card reveal">
+              <span class="steps__card-num">01</span>
+              <h3>Instala desde 7 kW con toma 220V</h3>
+              <p>En tu parqueadero, edificio o negocio. Lo registras en la plataforma y ya aparece en el mapa.</p>
+            </div>
+            <div class="steps__card reveal">
+              <span class="steps__card-num">02</span>
+              <h3>Los conductores llegan solos</h3>
+              <p>Tu cargador aparece visible para todos. Tú controlas el precio y la disponibilidad cuando quieras.</p>
+            </div>
+            <div class="steps__card reveal">
+              <span class="steps__card-num">03</span>
+              <h3>El dinero llega directo a tu cuenta</h3>
+              <p>Cada sesión que termina activa el pago a tu Nequi o cuenta bancaria. Sin trámites.</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:28px;">
+            <a href="#contacto" class="btn btn--primary">Registrarme como dueño</a>
+            <a href="#duenos" class="btn btn--outline">Ver calculadora de ingresos</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── FEATURES ────────────────────────────── -->
+  <section class="section section--alt">
+    <div class="container">
+      <div class="section__header reveal">
+        <div class="label">La plataforma</div>
+        <h2>Todo lo que necesitas<br/>en una plataforma</h2>
+      </div>
+      <div class="features">
+        <div class="features__card reveal">
+          <div class="features__card-line"></div>
+          <h3>Fácil de instalar desde 7 kW</h3>
+          <p>Desde un cargador de 7 kW con toma 220V estándar, hasta 22 kW o más. Compatible con Wallbox, ABB, Circutor y los equipos que se consiguen en Colombia.</p>
+        </div>
+        <div class="features__card reveal">
+          <div class="features__card-line"></div>
+          <h3>Pagos automáticos con Wompi</h3>
+          <p>Los conductores guardan su tarjeta una vez. El cobro exacto se procesa al finalizar cada sesión, sin intervención manual de ningún lado.</p>
+        </div>
+        <div class="features__card reveal">
+          <div class="features__card-line"></div>
+          <h3>Dashboard en tiempo real</h3>
+          <p>Los conductores ven kWh y costo en vivo. Los dueños ven sus ingresos, historial de sesiones y ganancias por cargador en cualquier momento.</p>
+        </div>
+        <div class="features__card reveal">
+          <div class="features__card-line"></div>
+          <h3>Mapa con precios visibles</h3>
+          <p>Los conductores ven el precio exacto por kWh en el mapa antes de llegar. Eligen el cargador, escanean el QR y listo. Sin sorpresas.</p>
+        </div>
+        <div class="features__card reveal">
+          <div class="features__card-line"></div>
+          <h3>El dinero llega solo a tu cuenta</h3>
+          <p>Al terminar cada carga, el pago se transfiere automáticamente a tu Nequi o cuenta bancaria. Sin trámites ni esperas.</p>
+        </div>
+        <div class="features__card reveal">
+          <div class="features__card-line"></div>
+          <h3>Control remoto de cargadores</h3>
+          <p>Pausa, reanuda o configura tus cargadores desde la app. Bloqueo automático de conductores con cobros pendientes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────── ROI ─────────────────────────────────── -->
+  <section class="section" id="duenos">
+    <div class="container">
+      <div class="roi">
+        <div class="roi__text reveal">
+          <div class="label">Para dueños</div>
+          <h2>Convierte tu parqueadero en un ingreso pasivo</h2>
+          <p>
+            En una buena ubicación, la inversión se recupera
+            <strong style="color:#dea85e">desde 8 meses</strong>.
+            Mueve los controles de la calculadora y ve tu estimado real.
+          </p>
+          <p>
+            Los mejores puntos en Medellín: centros comerciales, edificios de oficinas,
+            hoteles y clínicas. El cargador trabaja solo — tú solo recibes el dinero.
+          </p>
+          <ul>
+            <li>Tú pones el precio que quieras cobrar por kWh</li>
+            <li>El dinero llega directo a tu Nequi o cuenta bancaria</li>
+            <li>Ves tus ganancias en tiempo real desde el celular</li>
+            <li>Desde 7 kW — solo necesita una toma 220V estándar</li>
+          </ul>
+        </div>
+
+        <div class="roi__calc reveal">
+          <h3>Calculadora de retorno estimado</h3>
+
+          <div class="roi__field">
+            <label>Horas de uso al día <span class="val" id="hours-val">4 h</span></label>
+            <input type="range" id="hours" min="1" max="8" step="0.5" value="4" />
+          </div>
+
+          <div class="roi__field">
+            <label>Tu precio base <span class="val" id="price-val">$1.100 /kWh</span></label>
+            <input type="range" id="price" min="800" max="2000" step="50" value="1100" />
+          </div>
+
+          <div class="roi__result">
+            <div class="roi__result-item">
+              <span>Ganancia neta / mes</span>
+              <strong id="monthly">—</strong>
+            </div>
+            <div class="roi__result-item">
+              <span>Retorno de inversión</span>
+              <strong id="roi-months">—</strong>
+            </div>
+          </div>
+          <p class="roi__note">Estimado referencial. El resultado real varía según ubicación, tipo de vehículos y temporada. Inversión promedio instalada: $5–8 M COP.</p>
+        </div>
+      </div>
+
+      <div class="phone-slider reveal" style="margin-top:48px;">
+        <div class="phone-slider__track">
+          <div class="phone-slider__slide">
+            <div class="phone"><div class="phone__notch"></div>
+              <img src="/GananciadeDuenoDeCargador.jpeg" alt="Ganancias del dueño" />
+            </div>
+          </div>
+          <div class="phone-slider__slide">
+            <div class="phone"><div class="phone__notch"></div>
+              <img src="/ResuemnCOnsumoUsuario.jpeg" alt="Historial de sesiones" />
+            </div>
+          </div>
+        </div>
+        <div class="phone-slider__dots">
+          <span></span><span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- tecnología removida -->
+
+  <!-- ────────────────────────── CTA FINAL ────────────────────────────── -->
+  <section class="cta-section" id="contacto">
+    <div class="container">
+      <h2>¿Tienes cargadores o vas a instalarlos?</h2>
+      <p>Te mostramos el software en 30 minutos. Sin compromiso. Los primeros 3 meses son gratis para nuevos operadores.</p>
+      <div class="cta-section__actions">
+        <a href="https://wa.me/573147160371?text=Hola%2C%20quiero%20una%20demo%20de%20Faro%20Energy%20para%20gestionar%20mis%20cargadores"
+           target="_blank" rel="noopener" class="btn btn--primary">
+          Solicitar demo por WhatsApp
+        </a>
+        <a href="#precios" class="btn btn--outline">Ver precios</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────────── FOOTER ────────────────────────────── -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img src="/LogoFondoOScuro.png" alt="Faro Energy" style="height:24px;width:auto;" />
+      </div>
+      <ul class="footer__links">
+        <li><a href="#como-funciona">Cómo funciona</a></li>
+        <li><a href="#duenos">Para dueños</a></li>
+      </ul>
+      <p class="footer__copy">© 2026 Faro Energy · Medellín, Colombia</p>
+    </div>
+  </footer>
+
+</body>
+</html>

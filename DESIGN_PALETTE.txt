@@ -1,0 +1,67 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  CPO COLOMBIA — PALETA DE COLORES AUTORIZADA
+  Inspiración: Los Angeles Lakers
+  Principio: neuro-minimalista, dark mode
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FONDOS
+──────
+bg              #08050f    Fondo principal (negro con tinte púrpura)
+surface         #100c1c    Superficies secundarias, modales
+card            #171128    Tarjetas
+cardBorder      #241a3c    Bordes de tarjetas
+
+
+GOLD — color de acción principal
+──────────────────────────────────
+gold            #FDB927    Lakers gold — CTAs, Available, acción primaria
+goldDark        #c9941f    Gold oscuro — botones presionados, headers dueño
+goldLight       #fde68a    Gold claro — acentos sutiles
+goldFaint       #1c1000    Fondo tenue dorado — chips, badges
+
+
+PÚRPURA — color secundario / estado Charging
+─────────────────────────────────────────────
+purple          #552583    Lakers purple oficial (referencia)
+purpleActive    #7c3aed    Púrpura activo — estado Charging, elementos vivos
+purpleBg        #1a0d35    Fondo púrpura tenue
+
+
+TEXTO
+──────
+textPrimary     #fef9ec    Texto principal (blanco con tinte dorado)
+textSecondary   #fcd97a    Subtítulos, labels activos
+textMuted       #5a4870    Metadata, labels apagados (púrpura apagado)
+
+
+ESTADOS OCPP
+─────────────
+Available       #FDB927    Gold — disponible y listo
+Charging        #7c3aed    Púrpura — cargando activamente
+Preparing       #fbbf24    Amarillo — preparando
+Faulted         #f87171    Rojo — falla
+Offline         #374151    Gris — desconectado
+
+
+HEADERS POR ROL
+────────────────
+headerDriver    #0e0820    Púrpura muy oscuro — conductor
+headerOwner     #120d00    Dorado muy oscuro — dueño
+
+
+ACCIONES DESTRUCTIVAS
+──────────────────────
+danger          #7f1d1d
+dangerText      #fca5a5
+
+
+COLORES PROHIBIDOS
+───────────────────
+- Verde de cualquier tono (era la paleta anterior)
+- Blanco puro  #ffffff
+- Negro puro   #000000
+- Gradientes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  En código: tokens en T = {...} al inicio de App.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
