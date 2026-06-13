@@ -1,0 +1,22 @@
+{
+  "id": "generic-ocpp16",
+  "vendor": "Genérico",
+  "model": null,
+  "display_name": "Genérico OCPP 1.6",
+  "ocpp_version": "1.6J",
+  "connector_types": [
+    "Type 2",
+    "CCS2",
+    "CHAdeMO",
+    "Schuko"
+  ],
+  "max_power_kw": null,
+  "features": {
+    "remote_start": true,
+    "remote_stop": true,
+    "reserve": false,
+    "change_availability": false
+  },
+  "quirks": {},
+  "setup_guide_md": "Cualquier cargador con OCPP 1.6-J (la mayoría de marcas chinas lo soportan):\n1. Busca en la app o panel web del fabricante la opción 'OCPP' o 'Backend'\n2. Pega la URL de Faro como servidor OCPP\n3. Usa el ID asignado como ChargePoint ID / ChargeBox ID\n4. Asegúrate de elegir OCPP 1.6 JSON (no SOAP)\nSi la marca no aparece en nuestro catálogo, escríbenos y la integramos."
+}

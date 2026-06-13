@@ -1,0 +1,21 @@
+{
+  "id": "growatt-thor",
+  "vendor": "Growatt",
+  "model": null,
+  "display_name": "Growatt THOR",
+  "ocpp_version": "1.6J",
+  "connector_types": [
+    "Type 2"
+  ],
+  "max_power_kw": 22,
+  "features": {
+    "remote_start": true,
+    "remote_stop": true,
+    "reserve": false,
+    "change_availability": true
+  },
+  "quirks": {
+    "config_via": "app ShinePhone"
+  },
+  "setup_guide_md": "1. Abre ShinePhone y entra a tu cargador THOR\n2. Configuración → OCPP Server URL → pega la URL de Faro\n3. ChargePoint ID = el ID asignado por Faro\n4. Guarda y espera ~1 minuto a que reconecte"
+}

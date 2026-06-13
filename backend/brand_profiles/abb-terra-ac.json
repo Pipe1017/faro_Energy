@@ -1,0 +1,21 @@
+{
+  "id": "abb-terra-ac",
+  "vendor": "ABB",
+  "model": "Terra AC",
+  "display_name": "ABB Terra AC",
+  "ocpp_version": "1.6J",
+  "connector_types": [
+    "Type 2"
+  ],
+  "max_power_kw": 22,
+  "features": {
+    "remote_start": true,
+    "remote_stop": true,
+    "reserve": true,
+    "change_availability": true
+  },
+  "quirks": {
+    "config_via": "app TerraConfig"
+  },
+  "setup_guide_md": "1. Descarga la app TerraConfig (ABB) y conéctate al cargador por Bluetooth\n2. Ve a Configuración → OCPP → Servidor\n3. Pega la URL de Faro y el ID asignado\n4. Reinicia el cargador desde la app"
+}

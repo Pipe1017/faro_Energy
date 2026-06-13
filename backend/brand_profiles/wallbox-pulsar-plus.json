@@ -1,0 +1,22 @@
+{
+  "id": "wallbox-pulsar-plus",
+  "vendor": "Wallbox",
+  "model": "Pulsar Plus",
+  "display_name": "Wallbox Pulsar Plus",
+  "ocpp_version": "1.6J",
+  "connector_types": [
+    "Type 2"
+  ],
+  "max_power_kw": 22,
+  "features": {
+    "remote_start": true,
+    "remote_stop": true,
+    "reserve": false,
+    "change_availability": true
+  },
+  "quirks": {
+    "heartbeat_interval": 300,
+    "config_via": "portal myWallbox"
+  },
+  "setup_guide_md": "1. Entra a my.wallbox.com con la cuenta del cargador\n2. Selecciona tu Pulsar Plus → Configuración → OCPP\n3. Activa OCPP y pega la URL que te dimos\n4. En 'Charge Point ID' escribe el ID asignado por Faro\n5. Guarda — el cargador se reinicia y aparecerá En línea aquí"
+}

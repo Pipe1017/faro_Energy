@@ -46,71 +46,13 @@ SEED_OWNERS = [
 ] if SEED_DEMO_USERS else []
 SEED_CHARGERS = []   # Los dueños agregan sus cargadores desde la app
 
-# Perfiles de marca — el catálogo crece a medida que se integran fabricantes.
-# El matching usa vendor/model del BootNotification; model NULL aplica a todo el vendor.
-SEED_BRAND_PROFILES = [
-    {
-        "id": "faro-sim", "vendor": "CPO-Colombia", "model": "CPO-Sim-v1",
-        "display_name": "Simulador Faro", "ocpp_version": "1.6J",
-        "connector_types": ["Type 2"], "max_power_kw": 150,
-        "features": {"remote_start": True, "remote_stop": True, "reserve": True, "change_availability": True},
-        "quirks": {},
-        "setup_guide_md": "Cargador virtual para pruebas. Se conecta automáticamente al registrarlo — no requiere configuración.",
-    },
-    {
-        "id": "wallbox-pulsar-plus", "vendor": "Wallbox", "model": "Pulsar Plus",
-        "display_name": "Wallbox Pulsar Plus", "ocpp_version": "1.6J",
-        "connector_types": ["Type 2"], "max_power_kw": 22,
-        "features": {"remote_start": True, "remote_stop": True, "reserve": False, "change_availability": True},
-        "quirks": {"heartbeat_interval": 300, "config_via": "portal myWallbox"},
-        "setup_guide_md": (
-            "1. Entra a my.wallbox.com con la cuenta del cargador\n"
-            "2. Selecciona tu Pulsar Plus → Configuración → OCPP\n"
-            "3. Activa OCPP y pega la URL que te dimos\n"
-            "4. En 'Charge Point ID' escribe el ID asignado por Faro\n"
-            "5. Guarda — el cargador se reinicia y aparecerá En línea aquí"
-        ),
-    },
-    {
-        "id": "abb-terra-ac", "vendor": "ABB", "model": "Terra AC",
-        "display_name": "ABB Terra AC", "ocpp_version": "1.6J",
-        "connector_types": ["Type 2"], "max_power_kw": 22,
-        "features": {"remote_start": True, "remote_stop": True, "reserve": True, "change_availability": True},
-        "quirks": {"config_via": "app TerraConfig"},
-        "setup_guide_md": (
-            "1. Descarga la app TerraConfig (ABB) y conéctate al cargador por Bluetooth\n"
-            "2. Ve a Configuración → OCPP → Servidor\n"
-            "3. Pega la URL de Faro y el ID asignado\n"
-            "4. Reinicia el cargador desde la app"
-        ),
-    },
-    {
-        "id": "growatt-thor", "vendor": "Growatt", "model": None,
-        "display_name": "Growatt THOR", "ocpp_version": "1.6J",
-        "connector_types": ["Type 2"], "max_power_kw": 22,
-        "features": {"remote_start": True, "remote_stop": True, "reserve": False, "change_availability": True},
-        "quirks": {"config_via": "app ShinePhone"},
-        "setup_guide_md": (
-            "1. Abre ShinePhone y entra a tu cargador THOR\n"
-            "2. Configuración → OCPP Server URL → pega la URL de Faro\n"
-            "3. ChargePoint ID = el ID asignado por Faro\n"
-            "4. Guarda y espera ~1 minuto a que reconecte"
-        ),
-    },
-    {
-        "id": "generic-ocpp16", "vendor": "Genérico", "model": None,
-        "display_name": "Genérico OCPP 1.6", "ocpp_version": "1.6J",
-        "connector_types": ["Type 2", "CCS2", "CHAdeMO", "Schuko"], "max_power_kw": None,
-        "features": {"remote_start": True, "remote_stop": True, "reserve": False, "change_availability": False},
-        "quirks": {},
-        "setup_guide_md": (
-            "Cualquier cargador con OCPP 1.6-J (la mayoría de marcas chinas lo soportan):\n"
-            "1. Busca en la app o panel web del fabricante la opción 'OCPP' o 'Backend'\n"
-            "2. Pega la URL de Faro como servidor OCPP\n"
-            "3. Usa el ID asignado como ChargePoint ID / ChargeBox ID\n"
-            "4. Asegúrate de elegir OCPP 1.6 JSON (no SOAP)\n"
-            "Si la marca no aparece en nuestro catálogo, escríbenos y la integramos."
-        ),
-    },
-]
+# Perfiles de marca — cada uno en su archivo brand_profiles/<id>.json.
+# Agregar una marca nueva = agregar un JSON, sin tocar código.
+import json as _json
+from pathlib import Path as _Path
 
+_BRAND_DIR = _Path(__file__).parent / "brand_profiles"
+SEED_BRAND_PROFILES = [
+    _json.loads(f.read_text(encoding="utf-8"))
+    for f in sorted(_BRAND_DIR.glob("*.json"))
+]
