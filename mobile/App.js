@@ -327,6 +327,9 @@ export default function App() {
   const [payMethodsModal, setPayMethodsModal] = useState(null);
   const [confirmPayModal, setConfirmPayModal] = useState(null); // { method, charger }
   const [addMethodModal, setAddMethodModal]   = useState(null); // 'card' | 'nequi'
+  const [debts, setDebts]                     = useState(null); // { blocked, total_cop, debts[] }
+  const [debtPayModal, setDebtPayModal]       = useState(null); // deuda a pagar (abre selector de tarjeta)
+  const [payingDebt, setPayingDebt]           = useState(false);
   const [paymentPending, setPaymentPending]   = useState(null); // { reference, chargerId }
   const [addDisbModal, setAddDisbModal]       = useState(false);
   const [disbAccount, setDisbAccount]         = useState(null);
@@ -574,6 +577,27 @@ export default function App() {
 
   const fetchMyUsage = async () => {
     try { setMyUsage(await apiFetch('/my-sessions', {}, token)); } catch {}
+    try { setDebts(await apiFetch('/my-debts', {}, token)); } catch {}
+  };
+
+  // Pagar una deuda con el método elegido y desbloquear al conductor
+  const payDebt = async (method) => {
+    if (payingDebt || !debtPayModal) return;
+    setPayingDebt(true);
+    try {
+      const r = await apiFetch('/my-debts/pay', {
+        method: 'POST',
+        body: JSON.stringify({ payment_id: debtPayModal.payment_id, payment_method_id: method.id }),
+      }, token);
+      setDebtPayModal(null);
+      if (r.status === 'CAPTURED') {
+        Alert.alert('Deuda pagada', `Se cobraron $ ${r.amount_cop.toLocaleString('es-CO')} COP. Ya puedes volver a cargar.`);
+      } else {
+        Alert.alert('Cobro en proceso', 'Estamos confirmando el pago con tu banco. En unos segundos quedará resuelto.');
+      }
+      fetchMyUsage();
+    } catch (e) { Alert.alert('No se pudo pagar', e.message); }
+    finally { setPayingDebt(false); }
   };
 
   const fetchPaymentMethods = async () => {
@@ -1146,17 +1170,32 @@ export default function App() {
 
       {tab === 'miuso' && !isOwner ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
-          {myUsage?.unpaid_count > 0 && (
+          {debts?.blocked && (
             <View style={{ backgroundColor: '#fbe7e7', borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1.5, borderColor: '#b91c1c' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <Feather name="alert-circle" size={18} color={T.dangerText} />
-                <Text style={{ color: T.dangerText, fontWeight: '800', fontSize: 15 }}>Pago pendiente</Text>
+                <Text style={{ color: T.dangerText, fontWeight: '800', fontSize: 15 }}>Cobro pendiente</Text>
               </View>
-              <Text style={{ color: '#b91c1c', fontSize: 13, lineHeight: 20 }}>
-                Tienes {myUsage.unpaid_count} sesión{myUsage.unpaid_count > 1 ? 'es' : ''} sin cobrar porque tu tarjeta fue rechazada.{'\n\n'}
-                No podrás iniciar nuevas cargas hasta resolverlo.{'\n'}
-                Contacta soporte o actualiza tu método de pago.
+              <Text style={{ color: '#b91c1c', fontSize: 13, lineHeight: 20, marginBottom: 4 }}>
+                Una carga anterior no se pudo cobrar (tu tarjeta fue rechazada). Págala para volver a cargar.
               </Text>
+              {debts.debts.map(d => (
+                <View key={d.payment_id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 10, padding: 10, marginTop: 8, borderWidth: 1, borderColor: '#f0c4c4' }}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={{ color: T.textPri, fontSize: 13, fontWeight: '700' }}>{d.charger_id}</Text>
+                    {d.location ? <Text style={{ color: T.textMuted, fontSize: 11 }} numberOfLines={1}>{d.location}</Text> : null}
+                  </View>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#b91c1c', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
+                    onPress={() => {
+                      if (paymentMethods.length === 0) { Alert.alert('Sin tarjeta', 'Agrega una tarjeta primero para pagar la deuda.'); return; }
+                      setDebtPayModal(d);
+                    }}
+                  >
+                    <Text style={{ color: '#fdfbf7', fontSize: 13, fontWeight: '700' }}>Pagar $ {d.amount_cop.toLocaleString('es-CO')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>
           )}
 
@@ -2103,7 +2142,7 @@ export default function App() {
       })()}
 
       {/* ── Barra de navegación inferior ── */}
-      {!selectedCharger && !chargerPanel && !qrModal && !payMethodsModal && !addMethodModal && !paymentPending && !addDisbModal && !sessionModal && (
+      {!selectedCharger && !chargerPanel && !qrModal && !payMethodsModal && !addMethodModal && !paymentPending && !addDisbModal && !sessionModal && !debtPayModal && (
         <View style={styles.bottomBar}>
           {(isAdmin ? [
             { id: 'admin',  icon: 'activity',     label: 'Plataforma' },
@@ -2371,6 +2410,36 @@ export default function App() {
                 <Feather name="credit-card" size={15} color="#fdfbf7" />
                 <Text style={styles.btnText}>Agregar tarjeta</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* ── Pagar deuda: elegir tarjeta ── */}
+      {debtPayModal && (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => !payingDebt && setDebtPayModal(null)} activeOpacity={1} />
+          <View style={styles.modal}>
+            <View style={styles.mapPanelHandle} />
+            <Text style={styles.modalTitle}>Pagar cobro pendiente</Text>
+            <Text style={styles.mapPanelLocation}>{debtPayModal.charger_id} · $ {debtPayModal.amount_cop.toLocaleString('es-CO')} COP</Text>
+            <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: T.cardBorder }}>
+              <Feather name="info" size={13} color={T.textMuted} />
+              <Text style={{ color: T.textMuted, fontSize: 12, flex: 1 }}>
+                Usa una tarjeta <Text style={{ color: T.textPri }}>con fondos</Text>. Al pagar, quedas habilitado para cargar de nuevo.
+              </Text>
+            </View>
+            <View style={{ gap: 8, marginTop: 16 }}>
+              {paymentMethods.map(m => (
+                <TouchableOpacity key={m.id} style={[styles.methodRow, payingDebt && { opacity: 0.5 }]} disabled={payingDebt} onPress={() => payDebt(m)}>
+                  <Feather name={m.type === 'NEQUI' ? 'smartphone' : 'credit-card'} size={18} color={T.green} />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.methodDisplay}>{m.nickname || m.display}</Text>
+                    {m.nickname && <Text style={{ color: T.textMuted, fontSize: 11 }}>{m.display}</Text>}
+                  </View>
+                  {payingDebt ? <ActivityIndicator size="small" color={T.green} /> : <Feather name="chevron-right" size={16} color={T.textMuted} />}
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>

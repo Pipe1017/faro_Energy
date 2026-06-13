@@ -1832,7 +1832,7 @@ async def initiate_payment(
         .limit(1)
     )
     if unpaid.scalars().first():
-        raise HTTPException(402, "Tienes un cobro pendiente de una sesión anterior. Contacta soporte para regularizarlo antes de cargar de nuevo.")
+        raise HTTPException(402, "Tienes un cobro pendiente de una sesión anterior. Págalo desde 'Mi uso' para volver a cargar.")
 
     reference     = f"cpo-{current_user.id[:8]}-{body.charger_id}-{int(datetime.now().timestamp())}"
     guarantee_cop = calc_preauth_cop(charger)
@@ -1926,6 +1926,103 @@ async def payment_status(reference: str, current_user: User = Depends(get_curren
             logger.warning(f"Pre-auth {reference} declinada por el banco")
 
     return {"reference": reference, "status": payment.status, "payment_id": payment.id}
+
+
+# ── DEUDAS (cobros fallidos) ──────────────────────────────────────────────────
+
+@app.get("/my-debts")
+async def my_debts(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Cobros que el banco rechazó y mantienen bloqueado al conductor."""
+    result = await db.execute(
+        select(PaymentTransaction)
+        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status == "UNPAID")
+        .order_by(PaymentTransaction.created_at)
+    )
+    debts = result.scalars().all()
+    items = []
+    for p in debts:
+        location = None
+        if p.session_id:
+            s = await db.get(Session, p.session_id)
+            if s:
+                ch = await db.get(Charger, s.charger_id)
+                location = ch.location if ch else s.charger_id
+        items.append({
+            "payment_id": p.id, "session_id": p.session_id,
+            "amount_cop": p.amount_cents // 100, "charger_id": p.charger_id,
+            "location": location, "created_at": p.created_at.isoformat(),
+        })
+    return {
+        "blocked": len(items) > 0,
+        "total_cop": sum(i["amount_cop"] for i in items),
+        "debts": items,
+    }
+
+
+class PayDebtBody(BaseModel):
+    payment_id: str
+    payment_method_id: str
+
+
+@app.post("/my-debts/pay")
+async def pay_debt(body: PayDebtBody, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Reintenta cobrar una deuda con el método elegido (puede ser otra tarjeta).
+    Si aprueba: marca CAPTURED, abona al dueño y el conductor queda desbloqueado."""
+    pay_tx = await db.get(PaymentTransaction, body.payment_id)
+    if not pay_tx or pay_tx.user_id != current_user.id:
+        raise HTTPException(404, "Cobro no encontrado")
+    if pay_tx.status != "UNPAID":
+        raise HTTPException(400, "Este cobro ya no está pendiente")
+
+    method = await db.get(PaymentMethod, body.payment_method_id)
+    if not method or method.user_id != current_user.id:
+        raise HTTPException(404, "Método de pago no encontrado")
+    if not method.wompi_payment_source_id:
+        raise HTTPException(400, "Esta tarjeta no es válida para cobros. Elimínala y agrégala de nuevo.")
+
+    amount_cents = max(WOMPI_MIN_CENTS, pay_tx.amount_cents)
+    # Referencia NUEVA: Wompi rechaza referencias repetidas
+    new_ref = f"debt-{pay_tx.id[:8]}-{int(datetime.now().timestamp())}"
+    try:
+        resp = await wompi_svc.capture_preauth(method.wompi_payment_source_id, amount_cents, current_user.email, new_ref)
+    except Exception as e:
+        raise HTTPException(502, f"No pudimos conectar con la pasarela: {e}")
+
+    data   = resp.get("data", {})
+    err    = resp.get("error")
+    status = data.get("status", "")
+    if err or not data.get("id"):
+        raise HTTPException(402, "El banco rechazó el cobro. Intenta con otra tarjeta.")
+
+    pay_tx.reference   = new_ref
+    pay_tx.wompi_id    = data["id"]
+    pay_tx.amount_cents = amount_cents
+    pay_tx.wompi_payment_source_id = method.wompi_payment_source_id
+
+    if status == "APPROVED":
+        pc = (await db.execute(
+            select(PendingCharge).where(PendingCharge.payment_tx_id == pay_tx.id).limit(1)
+        )).scalars().first()
+        if pc:
+            await _settle_captured(db, pc, pay_tx)   # marca CAPTURED + abona al dueño
+        else:
+            pay_tx.status = "CAPTURED"
+        await db.commit()
+        return {"ok": True, "status": "CAPTURED", "amount_cop": amount_cents // 100}
+
+    if status == "PENDING":
+        # Dejar que el worker confirme: reactivar el PendingCharge
+        pc = (await db.execute(
+            select(PendingCharge).where(PendingCharge.payment_tx_id == pay_tx.id).limit(1)
+        )).scalars().first()
+        if pc:
+            pc.status = "WAITING_CONFIRM"
+            pc.wompi_tx_id = data["id"]
+            pc.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+        await db.commit()
+        return {"ok": True, "status": "PENDING", "amount_cop": amount_cents // 100}
+
+    raise HTTPException(402, "El banco rechazó el cobro. Intenta con otra tarjeta.")
 
 
 # ── WEBHOOK DE WOMPI ──────────────────────────────────────────────────────────
