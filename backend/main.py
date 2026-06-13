@@ -776,6 +776,9 @@ async def _execute_charge(db: AsyncSession, pc: PendingCharge):
         pc.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
         if pc.attempts >= CHARGE_MAX_ATTEMPTS:
             pc.status = "REVIEW"
+            # Pago de deuda colgado en confirmación: liberar para reintento manual
+            if pay_tx and pay_tx.status == "PROCESSING":
+                pay_tx.status = "UNPAID"
             logger.error(f"Cobro sesión #{pc.session_id} agotó reintentos — requiere revisión manual: {err[:120]}")
         else:
             logger.warning(f"Cobro sesión #{pc.session_id} falló (intento {pc.attempts}) — reintento en {delay}s")
@@ -1841,7 +1844,7 @@ async def initiate_payment(
     # Bloquear si tiene pagos fallidos pendientes
     unpaid = await db.execute(
         select(PaymentTransaction)
-        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status == "UNPAID")
+        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status.in_(["UNPAID", "PROCESSING"]))
         .limit(1)
     )
     if unpaid.scalars().first():
@@ -1948,7 +1951,7 @@ async def my_debts(current_user: User = Depends(get_current_user), db: AsyncSess
     """Cobros que el banco rechazó y mantienen bloqueado al conductor."""
     result = await db.execute(
         select(PaymentTransaction)
-        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status == "UNPAID")
+        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status.in_(["UNPAID", "PROCESSING"]))
         .order_by(PaymentTransaction.created_at)
     )
     debts = result.scalars().all()
@@ -1964,6 +1967,7 @@ async def my_debts(current_user: User = Depends(get_current_user), db: AsyncSess
             "payment_id": p.id, "session_id": p.session_id,
             "amount_cop": p.amount_cents // 100, "charger_id": p.charger_id,
             "location": location, "created_at": p.created_at.isoformat(),
+            "processing": p.status == "PROCESSING",   # en confirmación → no reintentar
         })
     return {
         "blocked": len(items) > 0,
@@ -2024,7 +2028,10 @@ async def pay_debt(body: PayDebtBody, current_user: User = Depends(get_current_u
         return {"ok": True, "status": "CAPTURED", "amount_cop": amount_cents // 100}
 
     if status == "PENDING":
-        # Dejar que el worker confirme: reactivar el PendingCharge
+        # Cobro en confirmación: marcar PROCESSING para que NO se pueda
+        # reintentar (evita cobros duplicados). El worker lo resuelve:
+        # → CAPTURED si el banco aprueba, → UNPAID si declina (pagable de nuevo)
+        pay_tx.status = "PROCESSING"
         pc = (await db.execute(
             select(PendingCharge).where(PendingCharge.payment_tx_id == pay_tx.id).limit(1)
         )).scalars().first()

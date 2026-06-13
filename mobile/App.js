@@ -607,6 +607,16 @@ export default function App() {
     finally { setPayingDebt(false); }
   };
 
+  // Mientras una deuda esté "Verificando…", refrescar hasta que el worker
+  // la confirme (pasa a pagada) o la libere (vuelve a pagable)
+  useEffect(() => {
+    if (!token || !debts?.debts?.some(d => d.processing)) return;
+    const t = setTimeout(() => {
+      apiFetch('/my-debts', {}, token).then(setDebts).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [debts, token]);
+
   const fetchPaymentMethods = async () => {
     try {
       const d = await apiFetch('/payment-methods', {}, token);
@@ -1192,15 +1202,22 @@ export default function App() {
                     <Text style={{ color: T.textPri, fontSize: 13, fontWeight: '700' }}>{d.charger_id}</Text>
                     {d.location ? <Text style={{ color: T.textMuted, fontSize: 11 }} numberOfLines={1}>{d.location}</Text> : null}
                   </View>
-                  <TouchableOpacity
-                    style={{ backgroundColor: '#b91c1c', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
-                    onPress={() => {
-                      if (paymentMethods.length === 0) { Alert.alert('Sin tarjeta', 'Agrega una tarjeta primero para pagar la deuda.'); return; }
-                      setDebtPayModal(d);
-                    }}
-                  >
-                    <Text style={{ color: '#fdfbf7', fontSize: 13, fontWeight: '700' }}>Pagar $ {d.amount_cop.toLocaleString('es-CO')}</Text>
-                  </TouchableOpacity>
+                  {d.processing ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <ActivityIndicator size="small" color="#b91c1c" />
+                      <Text style={{ color: '#b91c1c', fontSize: 12, fontWeight: '600' }}>Verificando…</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#b91c1c', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
+                      onPress={() => {
+                        if (paymentMethods.length === 0) { Alert.alert('Sin tarjeta', 'Agrega una tarjeta primero para pagar la deuda.'); return; }
+                        setDebtPayModal(d);
+                      }}
+                    >
+                      <Text style={{ color: '#fdfbf7', fontSize: 13, fontWeight: '700' }}>Pagar $ {d.amount_cop.toLocaleString('es-CO')}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ))}
             </View>
