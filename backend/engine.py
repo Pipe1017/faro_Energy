@@ -1,0 +1,752 @@
+"""Motor de negocio: OCPP, cobros (outbox), liquidacion, workers.
+Extraido literal de main.py — misma logica, ahora reusable por los routers."""
+import asyncio
+import logging
+from datetime import datetime, timedelta, timezone, date as _date
+from typing import Dict
+
+from fastapi import WebSocket, WebSocketDisconnect, HTTPException
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from ocpp.routing import on
+from ocpp.v16 import ChargePoint as cp
+from ocpp.v16 import call_result, call
+from ocpp.v16.enums import Action, RegistrationStatus, AvailabilityType
+
+from database import AsyncSessionLocal
+from models import (User, Charger, Session, Reservation, PaymentMethod,
+                    DisbursementAccount, PaymentTransaction, DisbursementRecord,
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent)
+import wompi as wompi_svc
+from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
+                    CHARGE_MAX_ATTEMPTS, OFFLINE_SESSION_TIMEOUT, MIN_WITHDRAW_COP,
+                    SETTLEMENT_DAYS, SETTLE_CHECK_INTERVAL, BOGOTA, _PERIOD_HOURS)
+from state import connected_chargers
+
+logger = logging.getLogger(__name__)
+
+
+async def _match_brand_profile(db: AsyncSession, vendor: str, model: str) -> ChargerBrandProfile | None:
+    """Busca el perfil de marca: primero vendor+model exactos, luego solo vendor
+    (perfiles con model NULL cubren toda la línea del fabricante)."""
+    if not vendor:
+        return None
+    v, m = vendor.strip().lower(), (model or "").strip().lower()
+    result = await db.execute(select(ChargerBrandProfile))
+    profiles = result.scalars().all()
+    for p in profiles:
+        if p.model and p.vendor.lower() == v and p.model.lower() == m:
+            return p
+    for p in profiles:
+        if p.model is None and p.vendor.lower() == v:
+            return p
+    return None
+
+
+# ── OCPP ─────────────────────────────────────────────────────────────────────
+
+class WebSocketAdapter:
+    def __init__(self, ws: WebSocket):
+        self.ws = ws
+
+    async def send(self, msg: str):
+        await self.ws.send_text(msg)
+
+    async def recv(self) -> str:
+        return await self.ws.receive_text()
+
+
+class ChargePoint(cp):
+
+    @on(Action.BootNotification)
+    async def on_boot_notification(self, charge_point_model, charge_point_vendor, **kwargs):
+        logger.info(f"[{self.id}] Boot — {charge_point_vendor}/{charge_point_model}")
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, self.id)
+            if charger:
+                # Un BootNotification = el cargador (re)arrancó y perdió el
+                # contexto de cualquier sesión en curso. Limpiar la transacción
+                # colgada evita una "sesión fantasma" (barra morada sin carga real)
+                if charger.active_transaction:
+                    logger.warning(
+                        f"[{self.id}] Boot con sesión colgada (tx#{charger.active_transaction}, "
+                        f"{charger.current_kwh or 0} kWh) — el cargador reinició, se descarta"
+                    )
+                    charger.active_transaction = None
+                    charger.session_user = None
+                    charger.session_started_at = None
+                    charger.current_kwh = None
+                    charger.meter_start = None
+                charger.status = "Available"
+                charger.model = charge_point_model
+                charger.vendor = charge_point_vendor
+                charger.last_seen = datetime.now(timezone.utc)
+                # Match automático contra el catálogo de marcas
+                profile = await _match_brand_profile(db, charge_point_vendor, charge_point_model)
+                if profile and charger.brand_profile_id != profile.id:
+                    charger.brand_profile_id = profile.id
+                    logger.info(f"[{self.id}] Marca identificada: {profile.display_name}")
+                elif not profile:
+                    logger.info(f"[{self.id}] Marca sin perfil en catálogo: {charge_point_vendor}/{charge_point_model} — candidata a integrar")
+                await db.commit()
+        return call_result.BootNotificationPayload(
+            current_time=datetime.now(timezone.utc).isoformat(),
+            interval=30,
+            status=RegistrationStatus.accepted,
+        )
+
+    @on(Action.Heartbeat)
+    async def on_heartbeat(self):
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, self.id)
+            if charger:
+                charger.last_seen = datetime.now(timezone.utc)
+                await db.commit()
+        return call_result.HeartbeatPayload(current_time=datetime.now(timezone.utc).isoformat())
+
+    @on(Action.StatusNotification)
+    async def on_status_notification(self, connector_id, error_code, status, **kwargs):
+        logger.info(f"[{self.id}] Estado → {status}")
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, self.id)
+            if charger:
+                charger.status = status
+                await db.commit()
+        return call_result.StatusNotificationPayload()
+
+    @on(Action.Authorize)
+    async def on_authorize(self, id_tag, **kwargs):
+        return call_result.AuthorizePayload(id_tag_info={"status": "Accepted"})
+
+    @on(Action.StartTransaction)
+    async def on_start_transaction(self, connector_id, id_tag, meter_start, timestamp, **kwargs):
+        tx_id = int(datetime.now().timestamp())
+        logger.info(f"[{self.id}] Sesión iniciada — tx#{tx_id} usuario:{id_tag}")
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, self.id)
+            if charger:
+                charger.status = "Charging"
+                charger.active_transaction = tx_id
+                charger.session_user = id_tag
+                charger.meter_start = meter_start
+                charger.session_started_at = datetime.now(timezone.utc)
+                charger.current_kwh = 0.0   # resetear al iniciar sesión nueva
+                _notify_owner(db, charger.owner_id, "SESSION_STARTED",
+                              f"{self.id}: carga iniciada por {id_tag}", self.id)
+                await db.commit()
+        return call_result.StartTransactionPayload(transaction_id=tx_id, id_tag_info={"status": "Accepted"})
+
+    @on(Action.MeterValues)
+    async def on_meter_values(self, connector_id, meter_value, **kwargs):
+        try:
+            reading = meter_value[0]
+            # OCPP lib puede usar camelCase o snake_case según la versión
+            samples = (reading.get("sampledValue")
+                    or reading.get("sampled_value")
+                    or [])
+            if not samples:
+                logger.warning(f"[{self.id}] MeterValues sin sampledValue: {reading}")
+                return call_result.MeterValuesPayload()
+
+            wh = float(samples[0]["value"])
+            async with AsyncSessionLocal() as db:
+                charger = await db.get(Charger, self.id)
+                if charger and charger.meter_start is not None:
+                    session_kwh = round((wh - charger.meter_start) / 1000, 3)
+                    charger.current_kwh = max(0.0, session_kwh)
+                    await db.commit()
+                    logger.info(f"[{self.id}] MeterValues: {wh:.0f}Wh → {charger.current_kwh:.3f} kWh")
+        except Exception as e:
+            logger.warning(f"[{self.id}] Error MeterValues: {e}")
+        return call_result.MeterValuesPayload()
+
+    @on(Action.StopTransaction)
+    async def on_stop_transaction(self, meter_stop, timestamp, transaction_id, **kwargs):
+        logger.info(f"[{self.id}] Sesión terminada — tx#{transaction_id}")
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, self.id)
+            if charger:
+                kwh = (meter_stop - (charger.meter_start or 0)) / 1000
+                await _finalize_session(db, charger, kwh)
+                await db.commit()
+        return call_result.StopTransactionPayload(id_tag_info={"status": "Accepted"})
+
+
+# ── CIERRE DE SESIÓN Y COBRO (outbox) ─────────────────────────────────────────
+
+def _notify_owner(db: AsyncSession, owner_id: str | None, type_: str, message: str, charger_id: str | None = None):
+    """Registra una alerta para el dueño (centro de alertas in-app)."""
+    if owner_id:
+        db.add(OwnerEvent(owner_id=owner_id, type=type_, message=message, charger_id=charger_id))
+
+
+def session_money(kwh: float, charger: Charger, started_at: datetime | None = None) -> dict:
+    """Montos en COP enteros: el total es la suma exacta de sus partes
+    para que cobrado = dueño + comisión + IVA + pasarela cuadre siempre.
+    El precio base depende de la franja horaria al INICIO de la sesión."""
+    price_base = charger.price_at(started_at)
+    cost_base  = charger.cost_per_kwh or 0
+    revenue    = round(kwh * price_base)
+    commission = round(revenue * PLATFORM_MARGIN)
+    subtotal   = revenue + commission
+    iva        = round(subtotal * IVA_RATE)
+    gateway    = round((subtotal + iva) * GATEWAY_FEE)
+    total      = subtotal + iva + gateway
+    elec_cost  = round(kwh * cost_base)
+    return {
+        "revenue": revenue, "commission": commission, "iva": iva,
+        "gateway": gateway, "total": total, "elec_cost": elec_cost,
+        "net_profit": revenue - elec_cost,
+    }
+
+
+async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, final_status: str = "Available") -> Session:
+    """
+    Cierra la sesión activa de un cargador: crea el registro Session y encola
+    el cobro en pending_charges (mismo commit — si el backend muere, el cobro
+    queda registrado y el worker lo ejecuta al reiniciar).
+    Se usa desde StopTransaction, desde el cierre manual y desde el janitor
+    de sesiones huérfanas.
+    """
+    kwh = max(0.0, kwh)
+    m = session_money(kwh, charger, charger.session_started_at)
+    session = Session(
+        charger_id=charger.id,
+        session_user=charger.session_user,
+        kwh_delivered=kwh,
+        price_per_kwh=charger.price_at(charger.session_started_at),
+        price_to_user=m["total"] / kwh if kwh > 0 else 0,
+        revenue_owner=m["revenue"],
+        commission_cpo=m["commission"],
+        iva_amount=m["iva"],
+        gateway_fee=m["gateway"],
+        electricity_cost=m["elec_cost"],
+        net_profit_owner=m["net_profit"],
+        total_charged=m["total"],
+        started_at=charger.session_started_at,
+        ended_at=datetime.now(timezone.utc),
+    )
+    db.add(session)
+    await db.flush()  # obtener session.id antes de crear registros dependientes
+
+    result_pay = await db.execute(
+        select(PaymentTransaction)
+        .where(
+            PaymentTransaction.charger_id == charger.id,
+            PaymentTransaction.status == "APPROVED",
+            PaymentTransaction.session_id.is_(None),
+        )
+        .order_by(PaymentTransaction.created_at.desc())
+        .limit(1)
+    )
+    pay_tx = result_pay.scalars().first()
+    if pay_tx:
+        pay_tx.session_id = session.id
+        db.add(PendingCharge(
+            session_id=session.id,
+            payment_tx_id=pay_tx.id,
+            amount_cents=m["total"] * 100,
+            next_attempt_at=datetime.now(timezone.utc),
+        ))
+        logger.info(f"[{charger.id}] Cobro encolado: ${m['total']:,} COP — sesión #{session.id}")
+    else:
+        logger.warning(f"[{charger.id}] Sin pago autorizado — sesión #{session.id} queda sin cobro")
+
+    _notify_owner(
+        db, charger.owner_id, "SESSION_COMPLETED",
+        f"{charger.id}: sesión de {kwh:.2f} kWh terminada — ganancia ${m['revenue']:,} COP",
+        charger.id,
+    )
+
+    charger.status = final_status
+    charger.last_kwh = round(kwh, 3)
+    charger.active_transaction = None
+    charger.session_user = None
+    charger.session_started_at = None
+    charger.current_kwh = None
+    charger.meter_start = None
+    logger.info(f"[{charger.id}] {kwh:.3f}kWh · ingreso:{m['revenue']} · luz:{m['elec_cost']} · neto:{m['net_profit']} COP")
+    return session
+
+
+async def _settle_captured(db: AsyncSession, pc: PendingCharge, pay_tx: PaymentTransaction):
+    """Cobro confirmado: marca CAPTURED y abona la ganancia al ledger del dueño.
+    La plata sale hacia su cuenta solo en la liquidación (retiro manual o job
+    automático) — nunca antes de confirmar que el conductor pagó."""
+    pc.status = "DONE"
+    pay_tx.status = "CAPTURED"
+    logger.info(f"✓ Cobro sesión #{pc.session_id}: ${pay_tx.amount_cents // 100:,} COP CAPTURED")
+
+    session = await db.get(Session, pc.session_id)
+    if not session:
+        return
+    charger = await db.get(Charger, session.charger_id)
+    owner_id = charger.owner_id if charger else None
+    revenue = int(session.revenue_owner)
+    if not owner_id or revenue <= 0:
+        return
+
+    # Evitar abono duplicado si el worker reintenta
+    existing = await db.execute(
+        select(LedgerEntry)
+        .where(LedgerEntry.session_id == session.id, LedgerEntry.type == "EARNING")
+        .limit(1)
+    )
+    if existing.scalars().first():
+        return
+
+    db.add(LedgerEntry(
+        owner_id=owner_id,
+        session_id=session.id,
+        type="EARNING",
+        amount_cents=revenue * 100,
+        description=f"Ganancia sesión #{session.id} — {session.charger_id}",
+    ))
+    logger.info(f"[{session.charger_id}] Ledger: +${revenue:,} COP para dueño {owner_id[:8]} (sesión #{session.id})")
+
+
+# ── LIQUIDACIÓN AL DUEÑO ─────────────────────────────────────────────────────
+
+# Lock por dueño: evita doble giro si el retiro manual y el job automático
+# calculan el mismo saldo al mismo tiempo
+_settle_locks: Dict[str, asyncio.Lock] = {}
+
+def _settle_lock(owner_id: str) -> asyncio.Lock:
+    if owner_id not in _settle_locks:
+        _settle_locks[owner_id] = asyncio.Lock()
+    return _settle_locks[owner_id]
+
+
+async def _owner_balance_cents(db: AsyncSession, owner_id: str) -> int:
+    result = await db.execute(
+        select(func.coalesce(func.sum(LedgerEntry.amount_cents), 0))
+        .where(LedgerEntry.owner_id == owner_id)
+    )
+    return int(result.scalar() or 0)
+
+
+async def _settle_owner(db: AsyncSession, owner_id: str, min_cop: int) -> dict:
+    """Dispersa el saldo acumulado del dueño hacia su cuenta (Nequi o banco).
+    Registra DisbursementRecord + asiento DISBURSEMENT en el ledger.
+    Si Wompi no tiene dispersiones activas, el giro queda PENDING_ACTIVATION
+    pero el saldo SÍ se descuenta (la deuda vive en el record, no en el ledger)."""
+    balance = await _owner_balance_cents(db, owner_id)
+    if balance < min_cop * 100:
+        return {"ok": False, "reason": f"Saldo insuficiente: el mínimo de retiro es ${min_cop:,} COP", "balance_cop": balance // 100}
+
+    result = await db.execute(select(DisbursementAccount).where(DisbursementAccount.user_id == owner_id))
+    disb_acc = result.scalar_one_or_none()
+    if not disb_acc:
+        return {"ok": False, "reason": "Configura primero tu cuenta de dispersión (Nequi o banco)", "balance_cop": balance // 100}
+
+    ref  = f"settle-{owner_id[:8]}-{int(datetime.now().timestamp())}"
+    desc = f"Liquidación Faro Energy — ${balance // 100:,} COP"
+    try:
+        if disb_acc.type == "NEQUI" and disb_acc.phone:
+            resp = await wompi_svc.disburse_nequi(ref, balance, disb_acc.phone, desc)
+        elif disb_acc.type == "BANK" and disb_acc.account_number:
+            resp = await wompi_svc.disburse_bank(
+                ref, balance, disb_acc.account_number, disb_acc.bank_code,
+                disb_acc.account_type or "SAVINGS", disb_acc.holder_name, disb_acc.holder_id, desc,
+            )
+        else:
+            return {"ok": False, "reason": "Tu cuenta de dispersión está incompleta", "balance_cop": balance // 100}
+    except Exception as e:
+        logger.warning(f"Liquidación {ref}: error conectando con Wompi: {e}")
+        return {"ok": False, "reason": "No pudimos conectar con la pasarela — intenta de nuevo", "balance_cop": balance // 100}
+
+    disb_data   = resp.get("data", {})
+    disb_status = disb_data.get("status")
+    wompi_err   = resp.get("error", {})
+
+    if disb_status in ("FAILED", "ERROR", "DECLINED"):
+        # Giro rechazado explícitamente — el saldo queda intacto
+        logger.warning(f"Liquidación {ref} rechazada por Wompi: {disb_status}")
+        return {"ok": False, "reason": "La pasarela rechazó el giro — verifica tu cuenta", "balance_cop": balance // 100}
+
+    if not disb_status and (wompi_err or not disb_data.get("id")):
+        # 404 = dispersiones no habilitadas en Wompi — el giro queda en cola
+        disb_status = "PENDING_ACTIVATION"
+        logger.warning(
+            f"Liquidación {ref}: dispersiones no activas en Wompi — "
+            f"${balance // 100:,} COP queda PENDIENTE para {disb_acc.type}"
+        )
+
+    record = DisbursementRecord(
+        session_id=None,
+        owner_id=owner_id,
+        amount_cents=balance,
+        wompi_disbursement_id=disb_data.get("id"),
+        status=disb_status,
+    )
+    db.add(record)
+    await db.flush()
+    db.add(LedgerEntry(
+        owner_id=owner_id,
+        disbursement_id=record.id,
+        type="DISBURSEMENT",
+        amount_cents=-balance,
+        description=f"Liquidación a {disb_acc.to_dict()['display']}",
+    ))
+    _notify_owner(
+        db, owner_id, "SETTLEMENT_SENT",
+        f"Giro de ${balance // 100:,} COP a {disb_acc.to_dict()['display']}"
+        + (" — en cola hasta que Wompi active dispersiones" if disb_status == "PENDING_ACTIVATION" else " en camino"),
+    )
+    logger.info(f"Liquidación ${balance // 100:,} COP → dueño {owner_id[:8]} ({disb_acc.type}): {disb_status}")
+    return {"ok": True, "amount_cop": balance // 100, "status": disb_status}
+
+
+# ── Calendario de cortes (5 y 20, día hábil Colombia) ────────────────────────
+
+try:
+    import holidays as _holidays
+    _CO_HOLIDAYS = _holidays.CO()
+except Exception:
+    _CO_HOLIDAYS = {}
+    logger.warning("Librería 'holidays' no disponible — los cortes solo evitan fines de semana")
+
+
+def _is_business_day(d: _date) -> bool:
+    return d.weekday() < 5 and d not in _CO_HOLIDAYS
+
+
+def _to_business_day(d: _date) -> _date:
+    """Si el día de corte cae en fin de semana o festivo, corre al siguiente hábil."""
+    while not _is_business_day(d):
+        d += timedelta(days=1)
+    return d
+
+
+def _settlement_anchors(today: _date) -> list[_date]:
+    """Fechas de giro (ajustadas a día hábil) del mes anterior y el actual."""
+    anchors = []
+    months = [(today.year - 1, 12)] if today.month == 1 else [(today.year, today.month - 1)]
+    months.append((today.year, today.month))
+    for y, m in months:
+        for day in SETTLEMENT_DAYS:
+            anchors.append(_to_business_day(_date(y, m, day)))
+    return anchors
+
+
+def _last_settlement_anchor(today: _date) -> _date:
+    return max(a for a in _settlement_anchors(today) if a <= today)
+
+
+def _next_settlement_date(today: _date) -> _date:
+    future = [a for a in _settlement_anchors(today) if a > today]
+    if future:
+        return min(future)
+    # todos los cortes cercanos ya pasaron — primer corte del mes siguiente
+    y, m = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+    return _to_business_day(_date(y, m, SETTLEMENT_DAYS[0]))
+
+
+async def _settlement_worker():
+    """Giro automático a dueños los días 5 y 20 de cada mes (día hábil Colombia).
+    Si el backend estuvo caído el día del corte, el giro sale al volver:
+    se liquida todo dueño con saldo sin giro desde el último corte."""
+    logger.info(f"Worker de liquidación iniciado — cortes los días {SETTLEMENT_DAYS} (hábil CO)")
+    while True:
+        try:
+            today  = datetime.now(BOGOTA).date()
+            anchor = _last_settlement_anchor(today)
+            # El corte vence a las 0:00 Bogotá del día ancla — liquidar a quien
+            # tenga saldo y ningún giro (manual o automático) desde esa fecha
+            anchor_dt = datetime(anchor.year, anchor.month, anchor.day, tzinfo=BOGOTA)
+            async with AsyncSessionLocal() as db:
+                balances = await db.execute(
+                    select(LedgerEntry.owner_id, func.sum(LedgerEntry.amount_cents))
+                    .group_by(LedgerEntry.owner_id)
+                    .having(func.sum(LedgerEntry.amount_cents) >= MIN_WITHDRAW_COP * 100)
+                )
+                candidates = [row[0] for row in balances.all()]
+                owners = []
+                for owner_id in candidates:
+                    recent = await db.execute(
+                        select(DisbursementRecord)
+                        .where(
+                            DisbursementRecord.owner_id == owner_id,
+                            DisbursementRecord.created_at >= anchor_dt,
+                            DisbursementRecord.status.notin_(["FAILED", "ERROR", "DECLINED"]),
+                        )
+                        .limit(1)
+                    )
+                    if not recent.scalars().first():
+                        owners.append(owner_id)
+            for owner_id in owners:
+                async with _settle_lock(owner_id):
+                    async with AsyncSessionLocal() as db:
+                        result = await _settle_owner(db, owner_id, min_cop=MIN_WITHDRAW_COP)
+                        await db.commit()
+                if result.get("ok"):
+                    logger.info(f"Corte {anchor}: liquidado dueño {owner_id[:8]} — ${result['amount_cop']:,} COP")
+        except Exception as e:
+            logger.warning(f"settlement_worker: {e}")
+        await asyncio.sleep(SETTLE_CHECK_INTERVAL)
+
+
+async def _backfill_ledger():
+    """Abona al ledger las sesiones cobradas (CAPTURED) antes de que existiera
+    el ledger. Idempotente: salta sesiones con abono o dispersión previa."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Session, Charger.owner_id)
+            .join(Charger, Session.charger_id == Charger.id)
+            .join(PaymentTransaction, PaymentTransaction.session_id == Session.id)
+            .where(PaymentTransaction.status == "CAPTURED")
+        )
+        added = 0
+        for session, owner_id in result.all():
+            revenue = int(session.revenue_owner)
+            if not owner_id or revenue <= 0:
+                continue
+            has_entry = await db.execute(
+                select(LedgerEntry).where(LedgerEntry.session_id == session.id).limit(1)
+            )
+            if has_entry.scalars().first():
+                continue
+            # Si ya hubo dispersión por sesión (sistema viejo), esa plata ya salió
+            has_disb = await db.execute(
+                select(DisbursementRecord).where(DisbursementRecord.session_id == session.id).limit(1)
+            )
+            if has_disb.scalars().first():
+                continue
+            db.add(LedgerEntry(
+                owner_id=owner_id,
+                session_id=session.id,
+                type="EARNING",
+                amount_cents=revenue * 100,
+                description=f"Ganancia sesión #{session.id} — {session.charger_id}",
+            ))
+            added += 1
+        await db.commit()
+        if added:
+            logger.info(f"Backfill ledger: {added} sesiones cobradas abonadas")
+
+
+async def _notify_unpaid(db: AsyncSession, pc: PendingCharge):
+    session = await db.get(Session, pc.session_id)
+    if session:
+        charger = await db.get(Charger, session.charger_id)
+        if charger:
+            _notify_owner(
+                db, charger.owner_id, "PAYMENT_UNPAID",
+                f"{charger.id}: el cobro de la sesión #{pc.session_id} fue rechazado por el banco — el conductor quedó bloqueado hasta regularizar",
+                charger.id,
+            )
+
+
+async def _execute_charge(db: AsyncSession, pc: PendingCharge):
+    """Ejecuta (o confirma) un cobro pendiente. Reintenta con backoff exponencial."""
+    pay_tx = await db.get(PaymentTransaction, pc.payment_tx_id) if pc.payment_tx_id else None
+    if not pay_tx:
+        pc.status = "REVIEW"
+        pc.last_error = "PaymentTransaction no encontrada"
+        return
+
+    def _backoff(err: str):
+        pc.attempts += 1
+        pc.last_error = err[:300]
+        delay = min(30 * (2 ** pc.attempts), 900)
+        pc.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+        if pc.attempts >= CHARGE_MAX_ATTEMPTS:
+            pc.status = "REVIEW"
+            # Pago de deuda colgado en confirmación: liberar para reintento manual
+            if pay_tx and pay_tx.status == "PROCESSING":
+                pay_tx.status = "UNPAID"
+            logger.error(f"Cobro sesión #{pc.session_id} agotó reintentos — requiere revisión manual: {err[:120]}")
+        else:
+            logger.warning(f"Cobro sesión #{pc.session_id} falló (intento {pc.attempts}) — reintento en {delay}s")
+
+    # 1) Ya existe una transacción en Wompi — solo confirmar su estado final
+    if pc.wompi_tx_id:
+        try:
+            resp = await wompi_svc.get_transaction(pc.wompi_tx_id)
+        except Exception as e:
+            _backoff(str(e))
+            return
+        status = resp.get("data", {}).get("status", "")
+        if status == "APPROVED":
+            await _settle_captured(db, pc, pay_tx)
+        elif status in ("DECLINED", "ERROR", "VOIDED"):
+            pc.status = "UNPAID"
+            pay_tx.status = "UNPAID"
+            await _notify_unpaid(db, pc)
+            logger.warning(f"Cobro sesión #{pc.session_id} declinado por Wompi → UNPAID (tx#{pc.wompi_tx_id})")
+        else:
+            _backoff(f"tx aún {status or 'sin estado'}")
+        return
+
+    # 2) Sesión sin consumo — nada que cobrar, liberar
+    if pc.amount_cents <= 0:
+        pc.status = "DONE"
+        pay_tx.status = "VOID"
+        return
+
+    # 3) Crear la transacción de cobro (sobre la pre-auth si existe, si no sobre la tarjeta)
+    source_id = pay_tx.wompi_preauth_id or pay_tx.wompi_payment_source_id
+    if not source_id:
+        pc.status = "REVIEW"
+        pay_tx.status = "UNPAID"
+        pc.last_error = "Sin payment_source para cobrar"
+        return
+
+    charge_cents = max(WOMPI_MIN_CENTS, pc.amount_cents)  # mínimo $1.500 COP por límite de Wompi
+    user = await db.get(User, pay_tx.user_id)
+    try:
+        resp = await wompi_svc.capture_preauth(source_id, charge_cents, user.email if user else "", pay_tx.reference)
+    except Exception as e:
+        _backoff(str(e))
+        return
+
+    data = resp.get("data", {})
+    err  = resp.get("error")
+    if err and "reference" in str(err).lower():
+        # Referencia ya usada: un intento anterior sí llegó a Wompi — recuperarlo
+        existing_tx = await wompi_svc.get_transaction_by_reference(pay_tx.reference)
+        if existing_tx:
+            data, err = existing_tx, None
+    if err or not data.get("id"):
+        # Si la captura contra la pre-auth falla repetidamente (p.ej. el cobro
+        # supera la garantía retenida), caer a cobrar con la tarjeta guardada
+        if (pc.attempts >= 2 and pay_tx.wompi_preauth_id
+                and pay_tx.wompi_payment_source_id
+                and pay_tx.wompi_payment_source_id != pay_tx.wompi_preauth_id):
+            logger.warning(
+                f"Cobro sesión #{pc.session_id}: captura sobre pre-auth #{pay_tx.wompi_preauth_id} "
+                f"falló {pc.attempts} veces — cayendo a la tarjeta guardada (ps#{pay_tx.wompi_payment_source_id})"
+            )
+            pay_tx.wompi_preauth_id = None
+        _backoff(str(err or resp))
+        return
+
+    pay_tx.wompi_id     = data["id"]
+    pay_tx.amount_cents = charge_cents
+    status = data.get("status", "")
+    if status == "APPROVED":
+        await _settle_captured(db, pc, pay_tx)
+    elif status == "PENDING":
+        pc.wompi_tx_id = data["id"]
+        pc.status = "WAITING_CONFIRM"
+        pc.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+        logger.info(f"Cobro sesión #{pc.session_id} PENDING en Wompi — confirmando en 10s (tx#{data['id']})")
+    else:
+        pc.status = "UNPAID"
+        pay_tx.status = "UNPAID"
+        await _notify_unpaid(db, pc)
+        logger.warning(f"Cobro sesión #{pc.session_id} {status or 'rechazado'} → UNPAID")
+
+
+async def _close_orphan_sessions():
+    """Cierra sesiones de cargadores que llevan demasiado tiempo sin conexión,
+    usando el último consumo medido (current_kwh se persiste en cada MeterValue)."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Charger).where(Charger.active_transaction.isnot(None)))
+        now = datetime.now(timezone.utc)
+        for charger in result.scalars().all():
+            if charger.id in connected_chargers:
+                continue
+            if charger.last_seen and (now - charger.last_seen).total_seconds() < OFFLINE_SESSION_TIMEOUT:
+                continue
+            logger.warning(
+                f"[{charger.id}] Sesión huérfana ({OFFLINE_SESSION_TIMEOUT}s offline) — "
+                f"cerrando con último consumo medido: {charger.current_kwh or 0} kWh"
+            )
+            await _finalize_session(db, charger, charger.current_kwh or 0.0, final_status="Offline")
+        await db.commit()
+
+
+OFFLINE_ALERT_MIN = 30  # minutos offline antes de alertar al dueño
+
+async def _offline_watcher():
+    """Alerta al dueño cuando su cargador lleva demasiado tiempo sin conexión.
+    Dedupe: una sola alerta por caída (no se repite hasta que el equipo vuelva)."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Charger).where(Charger.status == "Offline", Charger.owner_id.isnot(None))
+                )
+                now = datetime.now(timezone.utc)
+                for c in result.scalars().all():
+                    if not c.last_seen or (now - c.last_seen).total_seconds() < OFFLINE_ALERT_MIN * 60:
+                        continue
+                    already = await db.execute(
+                        select(OwnerEvent).where(
+                            OwnerEvent.charger_id == c.id,
+                            OwnerEvent.type == "CHARGER_OFFLINE",
+                            OwnerEvent.created_at >= c.last_seen,
+                        ).limit(1)
+                    )
+                    if already.scalars().first():
+                        continue
+                    _notify_owner(
+                        db, c.owner_id, "CHARGER_OFFLINE",
+                        f"{c.id} lleva más de {OFFLINE_ALERT_MIN} min sin conexión — revisa el equipo o su internet",
+                        c.id,
+                    )
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"offline_watcher: {e}")
+
+
+async def _charge_worker():
+    """Procesa el outbox de cobros y el cierre de sesiones huérfanas."""
+    logger.info("Worker de cobros iniciado")
+    while True:
+        await asyncio.sleep(5)
+        try:
+            async with AsyncSessionLocal() as db:
+                due = await db.execute(
+                    select(PendingCharge)
+                    .where(
+                        PendingCharge.status.in_(["PENDING", "WAITING_CONFIRM"]),
+                        PendingCharge.next_attempt_at <= datetime.now(timezone.utc),
+                    )
+                    .order_by(PendingCharge.created_at)
+                    .limit(10)
+                )
+                for pc in due.scalars().all():
+                    await _execute_charge(db, pc)
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"charge_worker: {e}")
+        try:
+            await _close_orphan_sessions()
+        except Exception as e:
+            logger.warning(f"janitor sesiones huérfanas: {e}")
+
+
+async def _mark_offline_after_grace(charge_point_id: str, grace: int = 10):
+    await asyncio.sleep(grace)
+    if charge_point_id not in connected_chargers:
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, charge_point_id)
+            if charger:
+                charger.status = "Offline"
+                await db.commit()
+                logger.info(f"[{charge_point_id}] Marcado Offline tras {grace}s sin reconexión")
+
+
+
+def calc_preauth_cop(charger: Charger) -> int:
+    """Pre-auth basado en potencia del cargador (cubre 15 min + 20% buffer, mínimo $3.000 COP)."""
+    power_kw   = charger.power_kw or 22.0
+    price_user = (charger.price_at() or 1000) * (1 + PLATFORM_MARGIN) * (1 + IVA_RATE) * (1 + GATEWAY_FEE)
+    max_kwh    = power_kw * 0.25           # 15 minutos
+    estimated  = max_kwh * price_user * 1.2
+    rounded    = max(3_000, int(estimated / 1000 + 1) * 1000)  # mínimo $3.000, múltiplos de $1.000
+    return rounded
+
+
+
+def _period_start_utc(period: str) -> datetime:
+    now_bo = datetime.now(BOGOTA)
+    if period == "today":
+        start_bo = now_bo.replace(hour=0, minute=0, second=0, microsecond=0)
+        return start_bo.astimezone(timezone.utc)
+    hours = _PERIOD_HOURS.get(period) or 24 * 7
+    return datetime.now(timezone.utc) - timedelta(hours=hours)
+
