@@ -1001,6 +1001,12 @@ export default function App() {
     : [];
 
 
+  // ¿Hay algún panel/modal encima del mapa? Entonces ocultar el buscador
+  // flotante (si no, se asoma sobre el modal de carga, QR, panel, etc.)
+  const mapOverlayOpen = !!(selectedCharger || chargerPanel || qrModal || payMethodsModal ||
+    confirmPayModal || addMethodModal || addChargerModal || addDisbModal || paymentPending ||
+    sessionModal || debtPayModal || locationPicker || renameModal);
+
   // Datos de sesión activa para mini-barra y modal
   const liveCharger  = activeSession ? (chargers.find(c => c.id === activeSession.chargerId) || activeSession.charger) : null;
   const sessionKwh   = liveKwh;   // kWh propio en vivo (de /my-active-session)
@@ -2014,7 +2020,8 @@ export default function App() {
             ))}
           </MapView>
 
-          {/* ── Buscador flotante estilo maps ── */}
+          {/* ── Buscador flotante estilo maps (oculto si hay panel/modal encima) ── */}
+          {!mapOverlayOpen && (
           <View style={styles.mapSearchWrap} pointerEvents="box-none">
             <View style={styles.mapSearchBox}>
               <Feather name="search" size={16} color="#94866f" style={{ marginRight: 8 }} />
@@ -2091,6 +2098,7 @@ export default function App() {
               </View>
             )}
           </View>
+          )}
 
         </View>
       )}
