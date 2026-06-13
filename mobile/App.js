@@ -1995,7 +1995,7 @@ export default function App() {
             ref={mapRef}
             style={styles.map}
             initialRegion={MEDELLIN}
-            onPress={() => { setSelectedCharger(null); setMapSearch(''); setGeoResults([]); }}
+            onPress={() => { Keyboard.dismiss(); setSelectedCharger(null); setMapSearch(''); setGeoResults([]); }}
             onRegionChangeComplete={r => {
               if (r.latitudeDelta > 0.07) setZoom('far');
               else if (r.latitudeDelta > 0.025) setZoom('mid');
@@ -2044,6 +2044,7 @@ export default function App() {
                     key={`geo-${i}`}
                     style={styles.mapSearchItem}
                     onPress={() => {
+                      Keyboard.dismiss();
                       setMapSearch('');
                       setGeoResults([]);
                       mapRef.current?.animateToRegion({
@@ -2071,6 +2072,7 @@ export default function App() {
                     key={c.id}
                     style={styles.mapSearchItem}
                     onPress={() => {
+                      Keyboard.dismiss();
                       setSelectedCharger(c);
                       setChargerPanel(c);
                       setMapSearch('');
