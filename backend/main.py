@@ -958,7 +958,7 @@ async def ocpp_endpoint(websocket: WebSocket, charge_point_id: str):
 
 @app.get("/status")
 async def get_status(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Charger).options(selectinload(Charger.owner)))
+    result = await db.execute(select(Charger).options(selectinload(Charger.owner)).order_by(Charger.id))
     chargers = result.scalars().all()
     return {
         "connected": list(connected_chargers.keys()),

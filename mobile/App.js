@@ -424,7 +424,11 @@ export default function App() {
     if (showSpinner) setRefreshing(true);
     try {
       const data = await apiFetch('/status', {}, token);
-      const list = Object.entries(data.chargers || {}).map(([id, info]) => ({ id, ...info }));
+      // Orden FIJO por id: el backend no garantiza orden y, al reemplazar la
+      // lista cada 5s, los items saltaban de posición (brinco en lista y mapa)
+      const list = Object.entries(data.chargers || {})
+        .map(([id, info]) => ({ id, ...info }))
+        .sort((a, b) => a.id.localeCompare(b.id));
       setChargers(prev => JSON.stringify(prev) === JSON.stringify(list) ? prev : list);
       setLastUpdate(new Date().toLocaleTimeString('es-CO'));
       setServerOk(true);
