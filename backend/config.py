@@ -44,7 +44,23 @@ SEED_OWNERS = [
     {"email": "conductor1@cpo.com", "name": "Conductor 1", "role": "conductor"},
     {"email": "conductor2@cpo.com", "name": "Conductor 2", "role": "conductor"},
 ] if SEED_DEMO_USERS else []
-SEED_CHARGERS = []   # Los dueños agregan sus cargadores desde la app
+# Configuración inicial: 10 cargadores en Medellín (5 Carlos, 5 Juanes).
+# Se siembran al arrancar si no existen (idempotente). Los simuladores
+# arrancan solos para cada uno. Precio en COP/kWh (base del dueño).
+SEED_CHARGERS = [
+    # ── Carlos (5) ──
+    {"id": "FARO-MED-01", "owner": "carlos@cpo.com", "location": "CC El Tesoro, El Poblado", "lat": 6.1959, "lng": -75.5550, "power_kw": 50,  "connector": "CCS2",   "price": 1900, "cost": 750},
+    {"id": "FARO-MED-02", "owner": "carlos@cpo.com", "location": "CC Santafé, El Poblado",   "lat": 6.1976, "lng": -75.5736, "power_kw": 22,  "connector": "Type 2", "price": 1500, "cost": 700},
+    {"id": "FARO-MED-03", "owner": "carlos@cpo.com", "location": "Parque Lleras, El Poblado", "lat": 6.2092, "lng": -75.5680, "power_kw": 11,  "connector": "Type 2", "price": 1400, "cost": 680},
+    {"id": "FARO-MED-04", "owner": "carlos@cpo.com", "location": "Universidad de Antioquia",  "lat": 6.2675, "lng": -75.5686, "power_kw": 7.4, "connector": "Type 2", "price": 1300, "cost": 650},
+    {"id": "FARO-MED-05", "owner": "carlos@cpo.com", "location": "Estadio Atanasio Girardot", "lat": 6.2566, "lng": -75.5903, "power_kw": 150, "connector": "CCS2",   "price": 2000, "cost": 800},
+    # ── Juanes (5) ──
+    {"id": "FARO-MED-06", "owner": "juanes@cpo.com", "location": "CC Oviedo, El Poblado",     "lat": 6.1985, "lng": -75.5605, "power_kw": 50,  "connector": "CCS2",   "price": 1850, "cost": 740},
+    {"id": "FARO-MED-07", "owner": "juanes@cpo.com", "location": "CC Premium Plaza, Aguacatala","lat": 6.2245, "lng": -75.5760, "power_kw": 22,  "connector": "Type 2", "price": 1550, "cost": 710},
+    {"id": "FARO-MED-08", "owner": "juanes@cpo.com", "location": "CC Unicentro, Laureles",    "lat": 6.2447, "lng": -75.5920, "power_kw": 22,  "connector": "Type 2", "price": 1500, "cost": 700},
+    {"id": "FARO-MED-09", "owner": "juanes@cpo.com", "location": "Aeropuerto Olaya Herrera",  "lat": 6.2197, "lng": -75.5905, "power_kw": 11,  "connector": "Type 2", "price": 1450, "cost": 690},
+    {"id": "FARO-MED-10", "owner": "juanes@cpo.com", "location": "CC Los Molinos, Belén",     "lat": 6.2308, "lng": -75.6044, "power_kw": 150, "connector": "CCS2",   "price": 1950, "cost": 790},
+]
 
 # Perfiles de marca — cada uno en su archivo brand_profiles/<id>.json.
 # Agregar una marca nueva = agregar un JSON, sin tocar código.
