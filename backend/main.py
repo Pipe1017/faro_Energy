@@ -1626,11 +1626,18 @@ async def add_card(body: AddCardBody, current_user: User = Depends(get_current_u
             raise HTTPException(409, "Ya tienes guardada esta tarjeta. Si es otra distinta con los mismos últimos dígitos, elimina la anterior primero.")
 
     # Convertir el token de un solo uso en payment_source persistente
-    ps_resp = await wompi_svc.save_card_as_payment_source(body.token, current_user.email)
-    ps_data = ps_resp.get("data", {})
+    try:
+        ps_resp = await wompi_svc.save_card_as_payment_source(body.token, current_user.email)
+    except Exception as e:
+        # Timeout o caída del sandbox de Wompi — no reventar con 500 crudo
+        logger.warning(f"save_payment_source error de red para {current_user.email}: {e}")
+        raise HTTPException(502, "La pasarela de pago no respondió a tiempo. Intenta de nuevo en un momento.")
+    ps_data = ps_resp.get("data") or {}
     ps_id   = ps_data.get("id")
     if not ps_id:
-        reason = ps_resp.get("error", {}).get("reason", "Wompi rechazó la tarjeta")
+        err = ps_resp.get("error") or {}
+        reason = err.get("reason") or (err.get("messages") if isinstance(err, dict) else None) or "Wompi no aceptó la tarjeta"
+        logger.warning(f"save_payment_source sin id para {current_user.email}: {ps_resp}")
         raise HTTPException(400, f"No se pudo guardar la tarjeta: {reason}")
     logger.info(f"Tarjeta guardada como payment_source #{ps_id} para {current_user.email}")
 

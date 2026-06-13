@@ -11,6 +11,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://sandbox.wompi.co/v1"
+WOMPI_TIMEOUT = httpx.Timeout(25.0, connect=10.0)  # el sandbox a veces tarda; sin esto la petición se cuelga
 
 def _key(name: str) -> str:
     val = os.getenv(name, "")
@@ -58,7 +59,7 @@ async def get_acceptance_tokens() -> tuple[str, str]:
     - personal_data_auth_token: autorización de datos personales (PERSONAL_DATA_AUTH)
     Ambos son obligatorios para crear transacciones.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.get(
             f"{BASE_URL}/merchants/{_key('WOMPI_PUBLIC_KEY')}",
             headers=_headers(use_public=True),
@@ -87,7 +88,7 @@ async def tokenize_card(number: str, cvc: str, exp_month: str, exp_year: str, ho
     (se usa el widget JS), pero en el MVP lo hacemos desde el backend.
     Devuelve el token de Wompi para guardarlo en DB.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.post(
             f"{BASE_URL}/tokens/cards",
             headers=_headers(use_public=True),
@@ -115,7 +116,7 @@ async def save_card_as_payment_source(card_token: str, email: str) -> dict:
     que reemplaza al token de un solo uso.
     """
     acceptance_token, personal_data_token = await get_acceptance_tokens()
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.post(
             f"{BASE_URL}/payment_sources",
             headers=_headers(),
@@ -147,7 +148,7 @@ async def preauthorize_card(
     Cuando status llegue a AVAILABLE, se puede capturar.
     """
     acceptance_token, personal_data_token = await get_acceptance_tokens()
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.post(
             f"{BASE_URL}/payment_sources",
             headers=_headers(),
@@ -175,7 +176,7 @@ async def preauthorize_card(
 
 async def get_payment_source(payment_source_id: int) -> dict:
     """Consulta el estado de una pre-autorización. Esperar status = AVAILABLE para capturar."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.get(
             f"{BASE_URL}/payment_sources/{payment_source_id}",
             headers=_headers(),
@@ -193,7 +194,7 @@ async def capture_preauth(
     Captura el monto real sobre una pre-autorización AVAILABLE.
     Crea una nueva transacción de tipo CAPTURE. Devuelve data.id = transaction_id.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.post(
             f"{BASE_URL}/transactions",
             headers=_headers(),
@@ -220,7 +221,7 @@ async def capture_preauth(
 async def capture_transaction(wompi_id: str, amount_cents: int) -> dict:
     """Captura el monto real al terminar la sesión (máx = monto pre-autorizado)."""
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
             resp = await client.post(
                 f"{BASE_URL}/transactions/{wompi_id}/capture",
                 headers=_headers(),
@@ -246,7 +247,7 @@ async def capture_transaction(wompi_id: str, amount_cents: int) -> dict:
 async def void_transaction(wompi_id: str) -> dict:
     """Anula una pre-autorización."""
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
             resp = await client.post(
                 f"{BASE_URL}/transactions/{wompi_id}/void",
                 headers=_headers(),
@@ -260,7 +261,7 @@ async def void_transaction(wompi_id: str) -> dict:
 
 async def get_transaction(wompi_id: str) -> dict:
     """Consulta el estado de una transacción."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.get(
             f"{BASE_URL}/transactions/{wompi_id}",
             headers=_headers(),
@@ -274,7 +275,7 @@ async def get_transaction_by_reference(reference: str) -> dict | None:
     Permite recuperar un cobro cuya respuesta se perdió (reintento idempotente):
     si Wompi rechaza la referencia por duplicada, aquí encontramos la tx original.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.get(
             f"{BASE_URL}/transactions",
             headers=_headers(),
@@ -288,7 +289,7 @@ async def get_merchant_transactions(from_date: str = "2020-01-01", until_date: s
     """Obtiene todas las transacciones del merchant desde la API de Wompi."""
     all_txs = []
     page = 1
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         while True:
             resp = await client.get(
                 f"{BASE_URL}/transactions",
@@ -328,7 +329,7 @@ async def disburse_nequi(reference: str, amount_cents: int, phone: str, descript
     Envía dinero al Nequi del dueño del cargador.
     Requiere que la cuenta Wompi tenga habilitada la dispersión.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.post(
             f"{BASE_URL}/disbursements",
             headers=_headers(),
@@ -359,7 +360,7 @@ async def disburse_bank(
     description: str,
 ) -> dict:
     """Envía dinero a cuenta bancaria del dueño."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=WOMPI_TIMEOUT) as client:
         resp = await client.post(
             f"{BASE_URL}/disbursements",
             headers=_headers(),
