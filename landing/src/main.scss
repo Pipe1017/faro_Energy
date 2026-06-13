@@ -61,7 +61,7 @@ img { max-width: 100%; display: block; }
 
   &--primary {
     background: $copper-d;
-    color: $text-hi;
+    color: #fdfbf7;   // marfil: $text-hi es espresso en paleta clara y se veía negro sobre cobre
     border: 1px solid $copper;
     &:hover { background: $copper; }
   }
