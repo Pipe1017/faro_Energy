@@ -1010,19 +1010,20 @@ img { max-width: 100%; display: block; }
 .phone-slider {
   width: 100%;
 
-  // ── Desktop: ambos teléfonos visibles, sin scroll ──────────────────
+  // ── Desktop: teléfonos visibles, sin scroll ───────────────────────
   &__track {
     display: flex;
+    flex-wrap: wrap;        // si no caben en fila (3+), envuelven en vez de desbordar
     gap: 24px;
     align-items: flex-start;
     justify-content: center;
-    overflow: visible;   // sin scroll en desktop
+    overflow: visible;      // sin scroll en desktop
 
     .phone-slider__slide:nth-child(2) { margin-top: 48px; }
   }
 
   &__slide {
-    flex: 0 0 220px;
+    flex: 0 0 200px;
     display: flex;
     justify-content: center;
   }
