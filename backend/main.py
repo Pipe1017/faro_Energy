@@ -1075,18 +1075,25 @@ async def remote_stop(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    charger = await db.get(Charger, charge_point_id)
+    if not charger or not charger.active_transaction:
+        return {"error": "Sin sesión activa"}
+
+    # Solo puede detener: el conductor que inició la carga, el dueño del
+    # cargador (emergencia) o un admin. Nadie detiene la carga de otro.
+    is_session_user = charger.session_user == current_user.email
+    is_owner        = charger.owner_id == current_user.id
+    is_admin        = current_user.role == "admin"
+    if not (is_session_user or is_owner or is_admin):
+        raise HTTPException(403, "No puedes detener una carga que no es tuya")
+
     charger_conn = connected_chargers.get(charge_point_id)
     if not charger_conn:
         # Cargador sin conexión: cerrar la sesión con el último consumo medido
         # y encolar el cobro — el conductor paga solo lo que se alcanzó a medir
-        charger = await db.get(Charger, charge_point_id)
-        if charger and charger.active_transaction:
-            await _finalize_session(db, charger, charger.current_kwh or 0.0, final_status="Offline")
-            await db.commit()
+        await _finalize_session(db, charger, charger.current_kwh or 0.0, final_status="Offline")
+        await db.commit()
         return {"error": "Cargador sin conexión — sesión cerrada con el último consumo medido", "manual": True}
-    charger = await db.get(Charger, charge_point_id)
-    if not charger or not charger.active_transaction:
-        return {"error": "Sin sesión activa"}
     response = await charger_conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
     return {"status": response.status}
 
