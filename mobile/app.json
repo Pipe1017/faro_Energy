@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Faro Energy",
-    "slug": "mobile",
+    "slug": "faro-energy",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,6 +22,18 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "06892dfd-a9b9-475c-8c14-21ab11a2f37a"
+      }
+    },
+    "owner": "felip_1017",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/06892dfd-a9b9-475c-8c14-21ab11a2f37a"
+    }
   }
 }
