@@ -1484,6 +1484,29 @@ async def charger_reservations(
     return {"reservations": [r.to_dict() for r in result.scalars().all()]}
 
 
+@app.get("/my-active-session")
+async def my_active_session(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Carga en curso del usuario, si la hay. Permite a la app reconstruir la
+    sesión tras cerrarse/reabrirse (activeSession vive en memoria del cliente)."""
+    result = await db.execute(
+        select(Charger)
+        .where(Charger.session_user == current_user.email, Charger.active_transaction.isnot(None))
+        .options(selectinload(Charger.owner))
+        .limit(1)
+    )
+    charger = result.scalars().first()
+    if not charger:
+        return {"active": False}
+    return {
+        "active": True,
+        "charger": charger.to_dict(),
+        "started_at": charger.session_started_at.isoformat() if charger.session_started_at else None,
+    }
+
+
 @app.get("/my-sessions")
 async def my_sessions(
     current_user: User = Depends(get_current_user),

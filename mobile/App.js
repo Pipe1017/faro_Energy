@@ -424,6 +424,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, [token]);
 
+  // Reconstruir la carga en curso tras cerrar/reabrir la app: activeSession
+  // vive en memoria, pero la carga sigue viva en el backend
+  useEffect(() => {
+    if (!token || activeSession) return;
+    (async () => {
+      try {
+        const r = await apiFetch('/my-active-session', {}, token);
+        if (r.active && r.charger) {
+          setActiveSession({
+            chargerId: r.charger.id,
+            startTime: r.started_at ? new Date(r.started_at).getTime() : Date.now(),
+            charger: r.charger,
+          });
+        }
+      } catch {}
+    })();
+  }, [token]);
+
   // Timer de sesión activa — actualiza cada segundo
   useEffect(() => {
     if (!activeSession) { setElapsed(0); return; }
