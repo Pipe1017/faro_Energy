@@ -449,6 +449,31 @@ export default function App() {
     return () => clearInterval(t);
   }, [activeSession, token]);
 
+  // Detectar cuando el CARGADOR termina la sesión (no el usuario):
+  // cerrar con resumen en vez de dejar la pantalla muerta
+  const lastKwhRef      = useRef(0);
+  const seenChargingRef = useRef(false);
+  useEffect(() => {
+    if (!activeSession) { lastKwhRef.current = 0; seenChargingRef.current = false; return; }
+    const c = chargers.find(x => x.id === activeSession.chargerId);
+    if (!c) return;
+    if (c.current_kwh > 0) lastKwhRef.current = c.current_kwh;
+    if (c.status === 'Charging') { seenChargingRef.current = true; return; }
+    if (seenChargingRef.current && !c.active_transaction && c.status !== 'Preparing') {
+      const kwh   = lastKwhRef.current;
+      const price = (c.price_per_kwh_now ?? c.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03;
+      const cost  = Math.round(kwh * price);
+      setActiveSession(null);
+      setSessionModal(false);
+      fetchMyUsage();
+      Alert.alert(
+        'Carga finalizada',
+        `El cargador terminó la sesión.\n\nEnergía:  ${kwh.toFixed(3)} kWh\nCobrado:  $ ${cost.toLocaleString('es-CO')} COP\n\nEl detalle exacto queda en "Mi uso".`,
+        [{ text: 'Ver mi historial', onPress: () => setTab('miuso') }, { text: 'Cerrar' }]
+      );
+    }
+  }, [chargers, activeSession]);
+
   const fetchEarnings = async () => {
     try { setEarnings(await apiFetch('/my-earnings', {}, token)); } catch {}
   };

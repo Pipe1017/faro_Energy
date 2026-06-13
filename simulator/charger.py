@@ -131,7 +131,8 @@ class ChargerSimulator(cp):
         self.log.info(f"Cargando — tx#{tx_id}")
 
         energy = meter
-        max_ticks = 120  # máximo 10 min de sesión simulada (5s × 120)
+        # Como hardware real: carga hasta RemoteStop (tope de seguridad 8h)
+        max_ticks = 8 * 3600 // 3
 
         for _ in range(max_ticks):
             try:

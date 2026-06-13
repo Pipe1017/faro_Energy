@@ -93,7 +93,9 @@ class SimCharger(cp):
         await self._status(ChargePointStatus.charging)
         self.log.info(f"Sesión iniciada — tx#{tx_id} usuario:{id_tag}")
 
-        for _ in range(120):   # máximo 6 minutos de simulación
+        # Como un cargador real: carga hasta que llegue RemoteStop.
+        # Tope de seguridad de 8 horas por si una sesión queda olvidada.
+        for _ in range(8 * 3600 // 3):
             try:
                 await asyncio.wait_for(self._remote_stop.wait(), timeout=3.0)
                 break
