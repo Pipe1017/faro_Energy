@@ -23,13 +23,13 @@ from state import connected_chargers
 from engine import (_finalize_session, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
-                    _mark_offline_after_grace)
+                    _mark_offline_after_grace, reservation_fee_cop)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class ReserveBody(BaseModel):
-    minutes: int = 60  # duración de la reserva en minutos
+    payment_method_id: str | None = None  # tarjeta para la garantía (opcional: usa la default)
 
 
 @router.post("/reserve/{charge_point_id}")
@@ -39,26 +39,103 @@ async def reserve_charger(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Separa un cargador: RETIENE (no cobra) una garantía proporcional al espacio
+    bloqueado. Si el conductor llega y carga, solo se captura la cuota fija; si no
+    llega (vence ventana + gracia), se captura toda la garantía como multa al dueño."""
     charger_conn = connected_chargers.get(charge_point_id)
     if not charger_conn:
         raise HTTPException(400, "Cargador no conectado")
     charger = await db.get(Charger, charge_point_id)
-    if not charger or charger.status not in ("Available",):
-        raise HTTPException(400, "Cargador no disponible para reserva")
+    if not charger or charger.status != "Available":
+        raise HTTPException(400, "Cargador no disponible para separar")
+    if charger.owner_id == current_user.id:
+        raise HTTPException(400, "No puedes separar tu propio cargador")
 
-    from datetime import timedelta
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(minutes=body.minutes)
+    # No separar con cobros fallidos pendientes (igual que iniciar sesión)
+    unpaid = await db.execute(
+        select(PaymentTransaction).where(
+            PaymentTransaction.user_id == current_user.id,
+            PaymentTransaction.status.in_(["UNPAID", "PROCESSING"]),
+        ).limit(1)
+    )
+    if unpaid.scalars().first():
+        raise HTTPException(402, "Tienes un cobro pendiente. Págalo desde 'Mi uso' para poder separar.")
+
+    # Una sola reserva activa por conductor a la vez
+    mine = await db.execute(
+        select(Reservation).where(
+            Reservation.user_id == current_user.id, Reservation.status == "active"
+        ).limit(1)
+    )
+    if mine.scalars().first():
+        raise HTTPException(409, "Ya tienes una separación activa. Cancélala o úsala antes de separar otra.")
+
+    # Tarjeta para la garantía
+    if body.payment_method_id:
+        method = await db.get(PaymentMethod, body.payment_method_id)
+        if not method or method.user_id != current_user.id:
+            raise HTTPException(404, "Método de pago no encontrado")
+    else:
+        res_m = await db.execute(
+            select(PaymentMethod).where(PaymentMethod.user_id == current_user.id)
+            .order_by(PaymentMethod.is_default.desc(), PaymentMethod.created_at.desc()).limit(1)
+        )
+        method = res_m.scalars().first()
+    if not method or not method.wompi_payment_source_id:
+        raise HTTPException(400, "Agrega una tarjeta válida para separar (se retiene una garantía).")
+
+    fee_cop = reservation_fee_cop(charger)
+
+    # Retención de la garantía ANTES de bloquear el cargador. Si el banco rechaza,
+    # no se separa nada.
+    preauth_id, pstatus = None, ""
+    try:
+        resp  = await wompi_svc.preauthorize_card(fee_cop * 100, current_user.email, method.wompi_payment_source_id)
+        pdata = resp.get("data", {})
+        preauth_id, pstatus = pdata.get("id"), (pdata.get("status") or "")
+        waited = 0
+        while preauth_id and pstatus == "PROCESSING" and waited < 6:
+            await asyncio.sleep(1)
+            waited += 1
+            pdata   = (await wompi_svc.get_payment_source(preauth_id)).get("data", {})
+            pstatus = pdata.get("status") or ""
+    except Exception as e:
+        logger.warning(f"Reserva: pre-auth no disponible ({e})")
+
+    if pstatus in ("DECLINED", "ERROR", "VOIDED"):
+        raise HTTPException(402, "Tu banco rechazó la retención de la garantía. Usa otra tarjeta.")
+    if preauth_id is None:
+        raise HTTPException(402, "No se pudo retener la garantía de separación. Intenta más tarde.")
+
+    now            = datetime.now(timezone.utc)
+    end            = now + timedelta(minutes=RESERVE_MINUTES)
+    no_show_at     = end + timedelta(minutes=RESERVE_GRACE_MINUTES)
     reservation_id = int(now.timestamp()) % 100000
 
     response = await charger_conn.call(call.ReserveNowPayload(
         connector_id=1,
-        expiry_date=end.isoformat(),
+        expiry_date=no_show_at.isoformat(),
         id_tag=current_user.email,
         reservation_id=reservation_id,
     ))
     if response.status != "Accepted":
-        raise HTTPException(400, f"Cargador rechazó la reserva: {response.status}")
+        raise HTTPException(400, f"El cargador rechazó la separación: {response.status}")
+
+    reference = f"resv-{current_user.id[:8]}-{charge_point_id}-{int(now.timestamp())}"
+    pay_tx = PaymentTransaction(
+        charger_id=charge_point_id,
+        user_id=current_user.id,
+        reference=reference,
+        wompi_payment_source_id=method.wompi_payment_source_id,
+        wompi_preauth_id=preauth_id,
+        amount_cents=0,            # se actualiza al capturar (cuota o multa)
+        # Estado propio "HOLD": evita que _finalize_session lo confunda con el
+        # cobro de energía (que busca status APPROVED + session_id nulo).
+        status="HOLD",
+        payment_type="CARD",
+    )
+    db.add(pay_tx)
+    await db.flush()
 
     reservation = Reservation(
         charger_id=charge_point_id,
@@ -66,9 +143,16 @@ async def reserve_charger(
         ocpp_reservation_id=reservation_id,
         start_time=now,
         end_time=end,
+        no_show_at=no_show_at,
+        status="active",
+        fee_cents=fee_cop * 100,
+        wompi_preauth_id=preauth_id,
+        payment_tx_id=pay_tx.id,
     )
     db.add(reservation)
+    charger.status = "Reserved"
     await db.commit()
+    logger.info(f"resv #{reservation.id}: {charge_point_id} separado por {current_user.email} — garantía ${fee_cop:,} COP retenida")
     return reservation.to_dict()
 
 
@@ -78,6 +162,8 @@ async def cancel_reservation(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Cancela una separación a tiempo: libera la retención (sin cobro) y desbloquea
+    el cargador. Solo el no-show (vencimiento) cobra la multa."""
     result = await db.execute(
         select(Reservation)
         .where(Reservation.id == reservation_id)
@@ -86,12 +172,27 @@ async def cancel_reservation(
     reservation = result.scalar_one_or_none()
     if not reservation or reservation.user_id != current_user.id:
         raise HTTPException(404, "Reserva no encontrada")
+    if reservation.status != "active":
+        raise HTTPException(400, f"La separación ya está '{reservation.status}'")
 
     charger_conn = connected_chargers.get(reservation.charger_id)
     if charger_conn:
-        await charger_conn.call(call.CancelReservationPayload(reservation_id=reservation.ocpp_reservation_id))
+        try:
+            await charger_conn.call(call.CancelReservationPayload(reservation_id=reservation.ocpp_reservation_id))
+        except Exception:
+            pass
 
-    reservation.status = "cancelled"
+    # Cancelación a tiempo = sin cobro. La retención de Wompi se libera sola al
+    # no capturarse (expira). Marcamos settled para que el worker la ignore.
+    reservation.status  = "cancelled"
+    reservation.settled = True
+    if reservation.payment_tx_id:
+        pay_tx = await db.get(PaymentTransaction, reservation.payment_tx_id)
+        if pay_tx and pay_tx.status in ("HOLD", "APPROVED", "PENDING"):
+            pay_tx.status = "VOID"
+    charger = await db.get(Charger, reservation.charger_id)
+    if charger and charger.status == "Reserved":
+        charger.status = "Available"
     await db.commit()
     return {"ok": True}
 

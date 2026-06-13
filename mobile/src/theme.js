@@ -38,6 +38,7 @@ export const T = {
 export const STATUS_COLOR = {
   Available: T.green,      // gold
   Charging:  T.charging,   // púrpura
+  Reserved:  '#0d9488',    // teal — separado, garantía retenida
   Faulted:   '#b91c1c',
   Offline:   T.offline,
   Preparing: T.warningText,

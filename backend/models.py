@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import String, Float, DateTime, Integer, ForeignKey, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+from config import RESERVE_CONVENIENCE_COP
 
 BOGOTA_TZ = ZoneInfo("America/Bogota")
 PEAK_START_HOUR = 18   # franja pico Colombia: 18:00–22:00 hora Bogotá
@@ -156,7 +157,21 @@ class Reservation(Base):
     ocpp_reservation_id: Mapped[int] = mapped_column(Integer)
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String, default="active")  # active | cancelled | completed
+    # no_show_at = end_time + gracia. Pasado este instante sin sesión, se cobra la multa.
+    no_show_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # active | fulfilled | no_show | cancelled | released
+    #   fulfilled = llegó y cargó (se capturó la cuota fija)
+    #   no_show   = no llegó (se capturó la garantía completa = multa)
+    #   cancelled = el conductor canceló a tiempo (se liberó la retención)
+    #   released  = se liberó sin cobro por causa externa (cargador offline, etc.)
+    status: Mapped[str] = mapped_column(String, default="active")
+    # Plata: garantía retenida y lo realmente capturado al cerrar la reserva.
+    fee_cents: Mapped[int] = mapped_column(Integer, default=0)          # garantía retenida
+    captured_cents: Mapped[int] = mapped_column(Integer, default=0)     # capturado al final (cuota o multa)
+    wompi_preauth_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payment_tx_id: Mapped[str | None] = mapped_column(String, ForeignKey("payment_transactions.id"), nullable=True)
+    session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=True)
+    settled: Mapped[bool] = mapped_column(Boolean, default=False)       # ya se procesó el desenlace (idempotencia)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     charger: Mapped["Charger"] = relationship("Charger")
@@ -171,7 +186,11 @@ class Reservation(Base):
             "user_name": self.user.name if self.user else None,
             "start_time": self.start_time.isoformat(),
             "end_time": self.end_time.isoformat(),
+            "no_show_at": self.no_show_at.isoformat() if self.no_show_at else None,
             "status": self.status,
+            "fee_cop": self.fee_cents // 100,
+            "captured_cop": self.captured_cents // 100,
+            "convenience_cop": RESERVE_CONVENIENCE_COP,
         }
 
 

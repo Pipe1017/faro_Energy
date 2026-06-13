@@ -23,7 +23,7 @@ from state import connected_chargers
 from engine import (_finalize_session, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
-                    _mark_offline_after_grace)
+                    _mark_offline_after_grace, fulfill_reservation_if_any)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -241,7 +241,20 @@ async def initiate_payment(
         raise HTTPException(404, "Método de pago no encontrado")
 
     charger = await db.get(Charger, body.charger_id)
-    if not charger or charger.status != "Available":
+    if not charger:
+        raise HTTPException(400, "Cargador no disponible")
+    if charger.status == "Reserved":
+        # Solo quien tiene la separación activa puede arrancar un cargador reservado
+        held = await db.execute(
+            select(Reservation).where(
+                Reservation.charger_id == body.charger_id,
+                Reservation.user_id == current_user.id,
+                Reservation.status == "active",
+            ).limit(1)
+        )
+        if not held.scalars().first():
+            raise HTTPException(400, "Este cargador está separado por otro conductor")
+    elif charger.status != "Available":
         raise HTTPException(400, "Cargador no disponible")
 
     if not method.wompi_payment_source_id:
@@ -304,6 +317,9 @@ async def initiate_payment(
         charger_conn = connected_chargers.get(body.charger_id)
         if charger_conn:
             await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.email))
+        # Si venía de una separación: cúmplela (captura la cuota fija, libera el resto)
+        await fulfill_reservation_if_any(db, current_user.id, body.charger_id)
+        await db.commit()
         logger.info(
             f"Sesión autorizada para {current_user.email} en {body.charger_id} — "
             + (f"garantía ${guarantee_cop:,} COP retenida (preauth#{preauth_id})" if preauth_id else f"sin retención, ps#{method.wompi_payment_source_id}")
@@ -337,10 +353,11 @@ async def payment_status(reference: str, current_user: User = Depends(get_curren
             ps_status = ""
         if ps_status == "AVAILABLE":
             payment.status = "APPROVED"
-            await db.commit()
             charger_conn = connected_chargers.get(payment.charger_id)
             if charger_conn:
                 await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.email))
+            await fulfill_reservation_if_any(db, current_user.id, payment.charger_id)
+            await db.commit()
             logger.info(f"Pre-auth confirmada — sesión iniciada en {payment.charger_id} para {current_user.email}")
         elif ps_status in ("DECLINED", "ERROR", "VOIDED"):
             payment.status = "DECLINED"

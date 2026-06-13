@@ -14,7 +14,7 @@ from models import User, Charger, ChargerBrandProfile
 from auth import hash_password
 import sim as sim_mgr
 from config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
-from engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger
+from engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker
 from routers import ocpp, public, auth as auth_router, chargers, reservations, driver, owner
 
 load_dotenv()
@@ -50,6 +50,13 @@ async def startup():
         ("ALTER TABLE chargers ADD COLUMN vendor TEXT",                                             "vendor en chargers"),
         ("ALTER TABLE chargers ADD COLUMN brand_profile_id TEXT",                                   "brand_profile_id en chargers"),
         ("ALTER TABLE chargers ADD COLUMN peak_price_per_kwh FLOAT",                                "peak_price_per_kwh en chargers"),
+        ("ALTER TABLE reservations ADD COLUMN no_show_at TIMESTAMP",                                "no_show_at en reservations"),
+        ("ALTER TABLE reservations ADD COLUMN fee_cents INTEGER DEFAULT 0",                         "fee_cents en reservations"),
+        ("ALTER TABLE reservations ADD COLUMN captured_cents INTEGER DEFAULT 0",                    "captured_cents en reservations"),
+        ("ALTER TABLE reservations ADD COLUMN wompi_preauth_id INTEGER",                            "wompi_preauth_id en reservations"),
+        ("ALTER TABLE reservations ADD COLUMN payment_tx_id TEXT",                                  "payment_tx_id en reservations"),
+        ("ALTER TABLE reservations ADD COLUMN session_id INTEGER",                                  "session_id en reservations"),
+        ("ALTER TABLE reservations ADD COLUMN settled BOOLEAN DEFAULT FALSE",                       "settled en reservations"),
     ]:
         try:
             async with engine.begin() as conn:
@@ -122,6 +129,9 @@ async def startup():
     await _backfill_ledger()
     asyncio.create_task(_settlement_worker())
     asyncio.create_task(_offline_watcher())
+
+    # Vencimiento de separaciones (no-show → multa al dueño)
+    asyncio.create_task(_reservation_worker())
 
 
 

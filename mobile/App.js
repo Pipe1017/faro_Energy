@@ -156,10 +156,18 @@ export default function App() {
     }
   };
 
+  const fetchReservations = async () => {
+    try {
+      const data = await apiFetch('/my-reservations', {}, token);
+      setReservations(data.reservations || []);
+    } catch {}
+  };
+
   useEffect(() => {
     if (!token) return;
     fetchStatus(true);
-    const interval = setInterval(() => fetchStatus(false), 5000);
+    fetchReservations();
+    const interval = setInterval(() => { fetchStatus(false); fetchReservations(); }, 5000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -633,15 +641,35 @@ export default function App() {
     } catch (e) { Alert.alert('Error', e.message); }
   };
 
-  const doReserve = async (charger) => {
+  const doReserve = (charger) => {
+    Alert.alert(
+      'Separar este cargador',
+      'Retenemos una garantía en tu tarjeta (no se cobra todavía).\n\n' +
+      '• Tienes 20 minutos para llegar.\n' +
+      '• Si cargas, solo se cobra $1.000 de separación y el resto se libera.\n' +
+      '• Si no llegas, se cobra la garantía completa para compensar al dueño por el espacio bloqueado.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Separar', onPress: () => confirmReserve(charger) },
+      ]
+    );
+  };
+
+  const confirmReserve = async (charger) => {
     try {
-      const data = await apiFetch(`/reserve/${charger.id}`, { method: 'POST', body: JSON.stringify({ minutes: 60 }) }, token);
+      const data = await apiFetch(`/reserve/${charger.id}`, { method: 'POST', body: JSON.stringify({}) }, token);
       setReservations(prev => [...prev, data]);
-      Alert.alert('Reserva confirmada', `${charger.location}\nVálida por 60 minutos`);
+      const fee = (data.fee_cop || 0).toLocaleString('es-CO');
+      const conv = (data.convenience_cop || 1000).toLocaleString('es-CO');
+      Alert.alert(
+        'Cargador separado',
+        `${charger.location}\n\nRetuvimos $${fee} de garantía.\nTienes 20 min para llegar. Al cargar solo pagas $${conv} de separación; el resto se libera.`
+      );
       fetchStatus();
       setSelectedCharger(null);
+      setChargerPanel(null);
     } catch (e) {
-      Alert.alert('Error', e.message);
+      Alert.alert('No se pudo separar', e.message);
     }
   };
 
@@ -1903,6 +1931,9 @@ export default function App() {
         const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
+        const myRes    = reservations.find(r => r.charger_id === c.id && r.status === 'active');
+        const isResMine  = c.status === 'Reserved' && !!myRes;
+        const isResOther = c.status === 'Reserved' && !myRes;
         const distKm   = (userCoords && c.lat != null && c.lng != null)
           ? haversineKm(userCoords, { latitude: c.lat, longitude: c.lng }) : null;
         return (
@@ -1953,9 +1984,14 @@ export default function App() {
                 </View>
               </View>
             )}
+            {isResOther && (
+              <View style={[styles.sessionBox, { marginBottom: 8 }]}>
+                <Text style={[styles.sessionLabel, { textAlign: 'center' }]}>Separado por otro conductor</Text>
+              </View>
+            )}
             {!isOwner && (
               <View style={styles.modalActions}>
-                {isAvail && (
+                {(isAvail || isResMine) && (
                   <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 2 }]} onPress={() => { setSelectedCharger(null); simulateQrScan(c); }}>
                     <Feather name="maximize" size={15} color="#fdfbf7" />
                     <Text style={styles.btnText}>Escanear QR</Text>
@@ -1970,7 +2006,13 @@ export default function App() {
                 {isAvail && (
                   <TouchableOpacity style={[styles.btn, styles.btnReserve, { flex: 1 }]} onPress={() => doReserve(c)}>
                     <Feather name="clock" size={15} color={T.green} />
-                    <Text style={[styles.btnText, { color: T.green }]}>Reservar</Text>
+                    <Text style={[styles.btnText, { color: T.green }]}>Separar</Text>
+                  </TouchableOpacity>
+                )}
+                {isResMine && (
+                  <TouchableOpacity style={[styles.btn, styles.btnReserve, { flex: 1 }]} onPress={() => cancelReservation(myRes.id)}>
+                    <Feather name="x-circle" size={15} color={T.dangerText} />
+                    <Text style={[styles.btnText, { color: T.dangerText }]}>Cancelar</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2079,6 +2121,9 @@ export default function App() {
         const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
+        const myRes    = reservations.find(r => r.charger_id === c.id && r.status === 'active');
+        const isResMine  = c.status === 'Reserved' && !!myRes;
+        const isResOther = c.status === 'Reserved' && !myRes;
         const distKm   = (userCoords && c.lat != null && c.lng != null)
           ? haversineKm(userCoords, { latitude: c.lat, longitude: c.lng }) : null;
         const close    = () => { setChargerPanel(null); setSelectedCharger(null); };
@@ -2151,10 +2196,16 @@ export default function App() {
                 </View>
               )}
 
+              {isResOther && (
+                <View style={[styles.sessionBox, { marginBottom: 12 }]}>
+                  <Text style={[styles.sessionLabel, { textAlign: 'center' }]}>Separado por otro conductor</Text>
+                </View>
+              )}
+
               {/* Acciones conductor */}
               {!isOwner && (
                 <View style={styles.mapPanelActions}>
-                  {isAvail && (
+                  {(isAvail || isResMine) && (
                     <TouchableOpacity
                       style={[styles.btn, styles.btnStart, { flex: 2 }]}
                       onPress={() => { close(); simulateQrScan(c); }}
@@ -2178,7 +2229,16 @@ export default function App() {
                       onPress={() => { doReserve(c); }}
                     >
                       <Feather name="clock" size={16} color={T.green} />
-                      <Text style={[styles.btnText, { color: T.green }]}>Reservar</Text>
+                      <Text style={[styles.btnText, { color: T.green }]}>Separar</Text>
+                    </TouchableOpacity>
+                  )}
+                  {isResMine && (
+                    <TouchableOpacity
+                      style={[styles.btn, styles.btnReserve, { flex: 1 }]}
+                      onPress={() => { close(); cancelReservation(myRes.id); }}
+                    >
+                      <Feather name="x-circle" size={16} color={T.dangerText} />
+                      <Text style={[styles.btnText, { color: T.dangerText }]}>Cancelar</Text>
                     </TouchableOpacity>
                   )}
                 </View>

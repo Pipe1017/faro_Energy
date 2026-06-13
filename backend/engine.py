@@ -20,7 +20,10 @@ from models import (User, Charger, Session, Reservation, PaymentMethod,
 import wompi as wompi_svc
 from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
                     CHARGE_MAX_ATTEMPTS, OFFLINE_SESSION_TIMEOUT, MIN_WITHDRAW_COP,
-                    SETTLEMENT_DAYS, SETTLE_CHECK_INTERVAL, BOGOTA, _PERIOD_HOURS)
+                    SETTLEMENT_DAYS, SETTLE_CHECK_INTERVAL, BOGOTA, _PERIOD_HOURS,
+                    RESERVE_MINUTES, RESERVE_GRACE_MINUTES, RESERVE_FEE_FACTOR,
+                    RESERVE_FEE_MIN_COP, RESERVE_FEE_CAP_COP, RESERVE_CONVENIENCE_COP,
+                    RESERVE_CHECK_INTERVAL)
 from state import connected_chargers
 
 logger = logging.getLogger(__name__)
@@ -739,6 +742,142 @@ def calc_preauth_cop(charger: Charger) -> int:
     estimated  = max_kwh * price_user * 1.2
     rounded    = max(3_000, int(estimated / 1000 + 1) * 1000)  # mínimo $3.000, múltiplos de $1.000
     return rounded
+
+
+# ── SEPARACIÓN / RESERVA ─────────────────────────────────────────────────────
+
+def reservation_fee_cop(charger: Charger) -> int:
+    """Garantía de separación: fracción del valor de la energía que el cargador
+    dejaría de entregar mientras está bloqueado. Redondeada a $100, con piso y tope."""
+    price_user = (charger.price_at() or 1000) * (1 + PLATFORM_MARGIN) * (1 + IVA_RATE) * (1 + GATEWAY_FEE)
+    window_kwh = (charger.power_kw or 22.0) * (RESERVE_MINUTES / 60)
+    raw        = window_kwh * price_user * RESERVE_FEE_FACTOR
+    rounded    = int(round(raw / 100) * 100)
+    return max(RESERVE_FEE_MIN_COP, min(RESERVE_FEE_CAP_COP, rounded))
+
+
+def _reservation_owner_revenue(gross_cents: int) -> int:
+    """Del bruto capturado (lo que paga el conductor) saca la parte neta del dueño,
+    revirtiendo comisión CPO + IVA + pasarela. Mismo reparto que la energía."""
+    factor = (1 + PLATFORM_MARGIN) * (1 + IVA_RATE) * (1 + GATEWAY_FEE)
+    return int(round(gross_cents / factor))
+
+
+async def _capture_reservation(db: AsyncSession, reservation: Reservation, amount_cents: int, reason: str) -> bool:
+    """Captura `amount_cents` de la garantía retenida y abona la parte del dueño al
+    ledger. Idempotente vía reservation.settled. Devuelve True si quedó liquidada.
+    Si la captura falla, deja settled=False para que el worker reintente."""
+    if reservation.settled:
+        return True
+    pay_tx = await db.get(PaymentTransaction, reservation.payment_tx_id) if reservation.payment_tx_id else None
+    source_id = reservation.wompi_preauth_id or (pay_tx.wompi_payment_source_id if pay_tx else None)
+
+    captured = False
+    if source_id and amount_cents > 0:
+        user = await db.get(User, reservation.user_id)
+        ref  = f"resv-{reservation.id}-{reason}"
+        try:
+            resp = await wompi_svc.capture_preauth(source_id, amount_cents, user.email if user else "", ref)
+            tx   = resp.get("data", {})
+            if (tx.get("status") or "") in ("APPROVED", "PENDING"):
+                captured = True
+                if pay_tx:
+                    pay_tx.status   = "CAPTURED"
+                    pay_tx.wompi_id = str(tx.get("id"))
+                    pay_tx.amount_cents = amount_cents
+        except Exception as e:
+            logger.warning(f"resv #{reservation.id}: captura ${amount_cents//100:,} falló ({reason}): {e}")
+            return False  # reintenta luego
+
+    reservation.captured_cents = amount_cents if captured else 0
+    reservation.settled = True
+
+    # Abono al dueño (parte neta), igual que una sesión de energía
+    if captured:
+        charger  = await db.get(Charger, reservation.charger_id)
+        owner_id = charger.owner_id if charger else None
+        revenue  = _reservation_owner_revenue(amount_cents)
+        if owner_id and revenue > 0:
+            db.add(LedgerEntry(
+                owner_id=owner_id, session_id=None, type="EARNING",
+                amount_cents=revenue * 100,
+                description=f"Separación {reason} — reserva #{reservation.id} ({reservation.charger_id})",
+            ))
+            _notify_owner(
+                db, owner_id, "RESERVATION_FEE",
+                f"{reservation.charger_id}: multa de separación ${amount_cents//100:,} COP — ganancia ${revenue:,}",
+                reservation.charger_id,
+            )
+    return True
+
+
+async def fulfill_reservation_if_any(db: AsyncSession, user_id: str, charger_id: str):
+    """El conductor con reserva activa arrancó su sesión: marca la reserva como
+    cumplida y captura SOLO la cuota fija de conveniencia (el resto de la retención
+    se libera). Se llama al autorizar la sesión. No bloquea si la captura falla."""
+    result = await db.execute(
+        select(Reservation).where(
+            Reservation.user_id == user_id,
+            Reservation.charger_id == charger_id,
+            Reservation.status == "active",
+        ).order_by(Reservation.created_at.desc()).limit(1)
+    )
+    reservation = result.scalars().first()
+    if not reservation:
+        return
+    reservation.status = "fulfilled"
+    # Cuota fija ≤ garantía retenida. El sobrante de la retención se libera solo.
+    fee = min(RESERVE_CONVENIENCE_COP * 100, reservation.fee_cents)
+    await _capture_reservation(db, reservation, fee, "cumplida")
+    conn = connected_chargers.get(charger_id)
+    if conn:
+        try:
+            await conn.call(call.CancelReservationPayload(reservation_id=reservation.ocpp_reservation_id))
+        except Exception:
+            pass
+    logger.info(f"resv #{reservation.id} cumplida — cuota ${fee//100:,} COP capturada, resto liberado")
+
+
+async def _reservation_worker():
+    """Vence reservas: pasado no_show_at sin cumplirse, captura la garantía completa
+    (multa al dueño) y libera el cargador. Sobrevive reinicios (todo en DB)."""
+    logger.info("Worker de reservas iniciado")
+    while True:
+        await asyncio.sleep(RESERVE_CHECK_INTERVAL)
+        try:
+            async with AsyncSessionLocal() as db:
+                now = datetime.now(timezone.utc)
+                due = await db.execute(
+                    select(Reservation).where(
+                        Reservation.status == "active",
+                        Reservation.settled == False,   # noqa: E712
+                        Reservation.no_show_at <= now,
+                    ).limit(20)
+                )
+                for r in due.scalars().all():
+                    charger = await db.get(Charger, r.charger_id)
+                    conn    = connected_chargers.get(r.charger_id)
+                    # Justicia: si el cargador no está disponible (offline/desconectado),
+                    # el conductor no pudo cargar → se libera SIN cobrar la multa.
+                    if conn is None or (charger and charger.status == "Offline"):
+                        r.status, r.settled, r.captured_cents = "released", True, 0
+                        if charger and charger.status == "Reserved":
+                            charger.status = "Available"
+                        logger.info(f"resv #{r.id} liberada sin multa — cargador no disponible")
+                        continue
+                    ok = await _capture_reservation(db, r, r.fee_cents, "no_show")
+                    if ok:
+                        r.status = "no_show"
+                        if charger and charger.status == "Reserved":
+                            charger.status = "Available"
+                        try:
+                            await conn.call(call.CancelReservationPayload(reservation_id=r.ocpp_reservation_id))
+                        except Exception:
+                            pass
+                        logger.info(f"resv #{r.id} NO-SHOW — multa ${r.fee_cents//100:,} COP capturada")
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"reservation_worker: {e}")
 
 
 
