@@ -816,6 +816,16 @@ async def _execute_charge(db: AsyncSession, pc: PendingCharge):
         if existing_tx:
             data, err = existing_tx, None
     if err or not data.get("id"):
+        # Si la captura contra la pre-auth falla repetidamente (p.ej. el cobro
+        # supera la garantía retenida), caer a cobrar con la tarjeta guardada
+        if (pc.attempts >= 2 and pay_tx.wompi_preauth_id
+                and pay_tx.wompi_payment_source_id
+                and pay_tx.wompi_payment_source_id != pay_tx.wompi_preauth_id):
+            logger.warning(
+                f"Cobro sesión #{pc.session_id}: captura sobre pre-auth #{pay_tx.wompi_preauth_id} "
+                f"falló {pc.attempts} veces — cayendo a la tarjeta guardada (ps#{pay_tx.wompi_payment_source_id})"
+            )
+            pay_tx.wompi_preauth_id = None
         _backoff(str(err or resp))
         return
 
