@@ -115,9 +115,7 @@ img { max-width: 100%; display: block; }
   top: 0; left: 0; right: 0;
   z-index: 100;
   padding: 18px 0;
-  background: rgba($bg, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: $bg;   // opaco: con el navbar translúcido, el logo SVG dejaba ver la página al hacer scroll
   border-bottom: 1px solid transparent;
   transition: border-color 0.3s;
 
