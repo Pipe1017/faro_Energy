@@ -711,6 +711,35 @@ img { max-width: 100%; display: block; }
   }
 }
 
+// ── Sellos de pago (confianza) ──────────────────────────────────────────────
+.trust-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 40px;
+
+  &__label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: $text-lo;
+    text-transform: uppercase;
+  }
+
+  &__logo {
+    height: 26px;
+    width: auto;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+    &:hover { opacity: 1; }
+  }
+
+  // El logo de Wompi es apaisado — un poco más alto para equilibrar
+  &__logo--wompi { height: 30px; }
+}
+
 // ── Footer ────────────────────────────────────────────────────────────────
 .footer {
   padding: 32px 0;
