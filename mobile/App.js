@@ -3,7 +3,7 @@ import {
   StyleSheet, Text, View, FlatList, TextInput,
   TouchableOpacity, RefreshControl, StatusBar, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-  ImageBackground, Linking,
+  ImageBackground, Linking, Keyboard,
 } from 'react-native';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import * as SecureStore from 'expo-secure-store';
@@ -148,6 +148,29 @@ async function apiFetch(path, options = {}, token = null) {
   catch { throw new Error(`Error del servidor (${res.status})`); }
   if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
   return data;
+}
+
+function useKeyboardHeight() {
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s = Keyboard.addListener(showEvt, e => setKb(e?.endCoordinates?.height ?? 0));
+    const h = Keyboard.addListener(hideEvt, () => setKb(0));
+    return () => { s.remove(); h.remove(); };
+  }, []);
+  return kb;
+}
+
+// Hoja inferior que sube EXACTAMENTE la altura del teclado y baja a 0 al
+// cerrarse (en Android la ventana ya se redimensiona sola — padding 0)
+function KbSheet({ children }) {
+  const kb = useKeyboardHeight();
+  return (
+    <View style={{ width: '100%', paddingBottom: Platform.OS === 'ios' ? kb : 0 }}>
+      {children}
+    </View>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2303,7 +2326,7 @@ export default function App() {
       {addMethodModal === 'card' && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddMethodModal(null)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+          <KbSheet>
             <ScrollView style={{ maxHeight: '100%', flexGrow: 0 }} contentContainerStyle={styles.modal} keyboardShouldPersistTaps="handled" bounces={false}>
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Agregar tarjeta</Text>
@@ -2346,7 +2369,7 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </KbSheet>
         </View>
       )}
 
@@ -2433,7 +2456,7 @@ export default function App() {
       {addChargerModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddChargerModal(false)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+          <KbSheet>
             <ScrollView contentContainerStyle={styles.modal} keyboardShouldPersistTaps="handled">
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Registrar cargador</Text>
@@ -2545,7 +2568,7 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </KbSheet>
         </View>
       )}
 
@@ -2553,7 +2576,7 @@ export default function App() {
       {addDisbModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddDisbModal(false)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+          <KbSheet>
             <ScrollView contentContainerStyle={styles.modal}>
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Cuenta para recibir pagos</Text>
@@ -2615,7 +2638,7 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </KbSheet>
         </View>
       )}
 
@@ -2688,7 +2711,7 @@ export default function App() {
       {renameModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setRenameModal(null)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+          <KbSheet>
             <View style={styles.modal}>
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Ponerle nombre</Text>
@@ -2713,7 +2736,7 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </View>
-          </KeyboardAvoidingView>
+          </KbSheet>
         </View>
       )}
 
