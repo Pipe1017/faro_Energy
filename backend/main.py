@@ -2226,6 +2226,25 @@ async def my_stats(
         stats.append(st)
     stats.sort(key=lambda x: -x["revenue_cop"])
 
+    # Serie de los últimos 7 días (hora Bogotá) para la gráfica de barras
+    seven_start = (datetime.now(BOGOTA) - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_r = await db.execute(
+        select(Session)
+        .join(Charger)
+        .where(Charger.owner_id == current_user.id, Session.ended_at >= seven_start.astimezone(timezone.utc))
+    )
+    days = {}
+    for i in range(7):
+        d = (seven_start + timedelta(days=i)).date().isoformat()
+        days[d] = {"date": d, "kwh": 0.0, "net_cop": 0, "sessions": 0}
+    for s in week_r.scalars().all():
+        d = s.ended_at.astimezone(BOGOTA).date().isoformat()
+        if d in days:
+            days[d]["kwh"]      += s.kwh_delivered
+            days[d]["net_cop"]  += int(s.net_profit_owner)
+            days[d]["sessions"] += 1
+    last_7_days = [{**v, "kwh": round(v["kwh"], 2)} for v in days.values()]
+
     return {
         "period": period,
         "since": start_utc.isoformat(),
@@ -2236,6 +2255,7 @@ async def my_stats(
             "net_cop":     sum(s["net_cop"] for s in stats),
         },
         "chargers": stats,
+        "last_7_days": last_7_days,
     }
 
 
