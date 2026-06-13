@@ -1567,6 +1567,18 @@ async def add_card(body: AddCardBody, current_user: User = Depends(get_current_u
     if not body.token.startswith("tok_"):
         raise HTTPException(400, "Token de tarjeta inválido")
 
+    # Anti-duplicado: misma marca + últimos 4 dígitos ya guardados
+    # (también protege contra doble-tap en el botón de guardar)
+    if body.brand and body.last4:
+        dup_display = f"{body.brand.upper()} •••• {body.last4}"
+        dup = await db.execute(
+            select(PaymentMethod)
+            .where(PaymentMethod.user_id == current_user.id, PaymentMethod.display == dup_display)
+            .limit(1)
+        )
+        if dup.scalars().first():
+            raise HTTPException(409, "Ya tienes guardada esta tarjeta. Si es otra distinta con los mismos últimos dígitos, elimina la anterior primero.")
+
     # Convertir el token de un solo uso en payment_source persistente
     ps_resp = await wompi_svc.save_card_as_payment_source(body.token, current_user.email)
     ps_data = ps_resp.get("data", {})
@@ -1598,8 +1610,15 @@ async def add_card(body: AddCardBody, current_user: User = Depends(get_current_u
 
 @app.post("/payment-methods/nequi")
 async def add_nequi(body: AddNequiBody, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(PaymentMethod).where(PaymentMethod.user_id == current_user.id))
-    is_first = result.scalar_one_or_none() is None
+    dup = await db.execute(
+        select(PaymentMethod)
+        .where(PaymentMethod.user_id == current_user.id, PaymentMethod.wompi_token == body.phone, PaymentMethod.type == "NEQUI")
+        .limit(1)
+    )
+    if dup.scalars().first():
+        raise HTTPException(409, "Ya tienes guardado ese número de Nequi.")
+    result = await db.execute(select(PaymentMethod).where(PaymentMethod.user_id == current_user.id).limit(1))
+    is_first = result.scalars().first() is None
     method = PaymentMethod(
         user_id=current_user.id,
         type="NEQUI",

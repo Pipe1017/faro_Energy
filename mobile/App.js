@@ -335,6 +335,7 @@ export default function App() {
   // Formularios
   const [cardForm, setCardForm]   = useState({ number:'', exp:'', cvc:'', holder:'', nickname:'' });
   const [nequiForm, setNequiForm] = useState({ phone:'', holder_name:'', nickname:'' });
+  const [savingMethod, setSavingMethod] = useState(false);   // bloquea doble-tap al guardar tarjeta/Nequi
   const [renameModal, setRenameModal]     = useState(null);
   const [adminSummary, setAdminSummary]   = useState(null);
   const [sessionDetail, setSessionDetail] = useState(null); // sesión seleccionada para ver detalle
@@ -607,6 +608,8 @@ export default function App() {
 
   // Añadir tarjeta nueva
   const addCard = async () => {
+    if (savingMethod) return;            // ignora taps repetidos mientras procesa
+    setSavingMethod(true);
     try {
       const clean = (cardForm.exp || '').replace(/\s/g, '');
       const parts = clean.includes('/') ? clean.split('/') : [clean.slice(0,2), clean.slice(2,4)];
@@ -641,10 +644,13 @@ export default function App() {
       setCardForm({ number:'', exp:'', cvc:'', holder:'', nickname:'' });
       Alert.alert('Tarjeta agregada', data.nickname || data.display);
     } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSavingMethod(false); }
   };
 
   // Añadir Nequi
   const addNequi = async () => {
+    if (savingMethod) return;
+    setSavingMethod(true);
     try {
       const data = await apiFetch('/payment-methods/nequi', {
         method: 'POST',
@@ -654,6 +660,7 @@ export default function App() {
       setAddMethodModal(null);
       setNequiForm({ phone:'', holder_name:'', nickname:'' });
     } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSavingMethod(false); }
   };
 
   // Renombrar método de pago
@@ -2360,11 +2367,19 @@ export default function App() {
                 Prueba sandbox: 4242 4242 4242 4242 · 12/29 · 123
               </Text>
               <View style={styles.modalActions}>
-                <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={addCard}>
-                  <Feather name="check" size={16} color="#fdfbf7" />
-                  <Text style={styles.btnText}>Guardar tarjeta</Text>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnStart, { flex: 1 }, savingMethod && { opacity: 0.6 }]}
+                  onPress={addCard}
+                  disabled={savingMethod}
+                >
+                  {savingMethod ? (
+                    <ActivityIndicator size="small" color="#fdfbf7" />
+                  ) : (
+                    <Feather name="check" size={16} color="#fdfbf7" />
+                  )}
+                  <Text style={styles.btnText}>{savingMethod ? 'Guardando…' : 'Guardar tarjeta'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setAddMethodModal(null)}>
+                <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setAddMethodModal(null)} disabled={savingMethod}>
                   <Text style={[styles.btnText, { color: T.textMuted }]}>Cancelar</Text>
                 </TouchableOpacity>
               </View>
