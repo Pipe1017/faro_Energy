@@ -212,7 +212,7 @@ function AuthScreen({ onLogin }) {
     >
       <StatusBar barStyle="dark-content" />
       <View style={styles.authSpacer} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.authKeyboard}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.authKeyboard}>
         <View style={styles.authCard}>
           <ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
 
@@ -2303,8 +2303,8 @@ export default function App() {
       {addMethodModal === 'card' && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddMethodModal(null)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
-            <View style={styles.modal}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+            <ScrollView style={{ maxHeight: '100%', flexGrow: 0 }} contentContainerStyle={styles.modal} keyboardShouldPersistTaps="handled" bounces={false}>
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Agregar tarjeta</Text>
               <View style={{ gap: 10, marginTop: 16 }}>
@@ -2345,7 +2345,7 @@ export default function App() {
                   <Text style={[styles.btnText, { color: T.textMuted }]}>Cancelar</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </View>
       )}
@@ -2433,7 +2433,7 @@ export default function App() {
       {addChargerModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddChargerModal(false)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
             <ScrollView contentContainerStyle={styles.modal} keyboardShouldPersistTaps="handled">
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Registrar cargador</Text>
@@ -2553,7 +2553,7 @@ export default function App() {
       {addDisbModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddDisbModal(false)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
             <ScrollView contentContainerStyle={styles.modal}>
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Cuenta para recibir pagos</Text>
@@ -2688,7 +2688,7 @@ export default function App() {
       {renameModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setRenameModal(null)} activeOpacity={1} />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
             <View style={styles.modal}>
               <View style={styles.mapPanelHandle} />
               <Text style={styles.modalTitle}>Ponerle nombre</Text>
