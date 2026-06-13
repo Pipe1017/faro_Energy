@@ -72,7 +72,7 @@ function formatElapsed(ms) {
 // Marcador memoizado — solo se redibuja si cambia status, selección o propiedad
 const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
   const color   = STATUS_COLOR[charger.status] || T.offline;
-  const price   = Math.round((charger.price_per_kwh || 0) * 1.10 * 1.19 * 1.03);
+  const price   = Math.round((charger.price_per_kwh_now ?? charger.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03);
   const isCharg = charger.status === 'Charging';
 
   // Lejos → solo bolita de color (mismo comportamiento que antes)
@@ -125,6 +125,7 @@ const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
 }, (prev, next) =>
   prev.charger.status === next.charger.status &&
   prev.charger.price_per_kwh === next.charger.price_per_kwh &&
+  prev.charger.price_per_kwh_now === next.charger.price_per_kwh_now &&
   prev.isSelected === next.isSelected &&
   prev.isMine === next.isMine &&
   prev.zoom === next.zoom
@@ -837,7 +838,7 @@ export default function App() {
   // Datos de sesión activa para mini-barra y modal
   const liveCharger  = activeSession ? (chargers.find(c => c.id === activeSession.chargerId) || activeSession.charger) : null;
   const sessionKwh   = liveCharger?.current_kwh ?? 0;
-  const sessionPrice = liveCharger?.price_per_kwh ? liveCharger.price_per_kwh * 1.10 * 1.19 * 1.03 : 0;
+  const sessionPrice = (liveCharger?.price_per_kwh_now ?? liveCharger?.price_per_kwh) ? (liveCharger.price_per_kwh_now ?? liveCharger.price_per_kwh) * 1.10 * 1.19 * 1.03 : 0;
   const sessionCost  = Math.round(sessionKwh * sessionPrice);
 
 
@@ -864,7 +865,7 @@ export default function App() {
     const isCharging = item.status === 'Charging';
     const isOffline  = item.status === 'Offline';
     // precio_base × 1.10 (CPO) × 1.19 (IVA) × 1.03 (pasarela)
-  const priceUser  = item.price_per_kwh ? Math.round(item.price_per_kwh * 1.10 * 1.19 * 1.03) : null;
+  const priceUser  = (item.price_per_kwh_now ?? item.price_per_kwh) ? Math.round((item.price_per_kwh_now ?? item.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
 
     return (
       <TouchableOpacity
@@ -933,7 +934,7 @@ export default function App() {
             </View>
             <View style={styles.sessionRow}>
               <Text style={styles.sessionLabel}>Ingreso estimado</Text>
-              <Text style={styles.sessionCost}>$ {Math.round(item.current_kwh * (item.price_per_kwh || 0)).toLocaleString('es-CO')} COP</Text>
+              <Text style={styles.sessionCost}>$ {Math.round(item.current_kwh * (item.price_per_kwh_now ?? item.price_per_kwh ?? 0)).toLocaleString('es-CO')} COP</Text>
             </View>
             {item.session_user && (
               <View style={styles.sessionRow}>
@@ -1884,7 +1885,7 @@ export default function App() {
                       <Text style={styles.mapSearchItemId}>{c.id}</Text>
                       <Text style={styles.mapSearchItemLoc} numberOfLines={1}>{c.location}</Text>
                     </View>
-                    <Text style={styles.mapSearchItemPrice}>$ {Math.round((c.price_per_kwh || 0) * 1.10 * 1.19 * 1.03).toLocaleString('es-CO')}/kWh</Text>
+                    <Text style={styles.mapSearchItemPrice}>$ {Math.round((c.price_per_kwh_now ?? c.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03).toLocaleString('es-CO')}/kWh</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -1899,7 +1900,7 @@ export default function App() {
         const c        = chargers.find(x => x.id === selectedCharger.id) || selectedCharger;
         const color    = STATUS_COLOR[c.status] || T.offline;
         const mine     = isOwner && c.owner_id === user?.id;
-        const priceUser = c.price_per_kwh ? Math.round(c.price_per_kwh * 1.10 * 1.19 * 1.03) : null;
+        const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
         return (
@@ -2063,7 +2064,7 @@ export default function App() {
         const c        = chargers.find(x => x.id === chargerPanel.id) || chargerPanel;
         const color    = STATUS_COLOR[c.status] || T.offline;
         const mine     = isOwner && c.owner_id === user?.id;
-        const priceUser = c.price_per_kwh ? Math.round(c.price_per_kwh * 1.10 * 1.19 * 1.03) : null;
+        const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
         const close    = () => { setChargerPanel(null); setSelectedCharger(null); };
@@ -2206,7 +2207,7 @@ export default function App() {
           <View style={styles.modal}>
             <View style={styles.mapPanelHandle} />
             <Text style={styles.modalTitle}>¿Cómo vas a pagar?</Text>
-            <Text style={styles.mapPanelLocation}>{payMethodsModal.location} · $ {Math.round((payMethodsModal.price_per_kwh||0)*1.10*1.19*1.03).toLocaleString('es-CO')}/kWh</Text>
+            <Text style={styles.mapPanelLocation}>{payMethodsModal.location} · $ {Math.round((payMethodsModal.price_per_kwh_now ?? payMethodsModal.price_per_kwh ?? 0)*1.10*1.19*1.03).toLocaleString('es-CO')}/kWh</Text>
             <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: T.cardBorder }}>
               <Feather name="info" size={13} color={T.textMuted} />
               <Text style={{ color: T.textMuted, fontSize: 12, flex: 1 }}>
