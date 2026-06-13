@@ -6,7 +6,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY *.py ./
+# Copia todo el código (routers/, brand_profiles/, *.py) respetando .dockerignore
+# (que excluye venv, __pycache__, .env, node_modules)
+COPY . .
 
 # IMPORTANTE: un solo worker — el estado OCPP (cargadores conectados,
 # simuladores) vive en memoria del proceso
