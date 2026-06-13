@@ -1,67 +1,71 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  CPO COLOMBIA — PALETA DE COLORES AUTORIZADA
-  Inspiración: Los Angeles Lakers
-  Principio: neuro-minimalista, dark mode
+  FARO ENERGY — PALETA "FARO CLARO" (v3)
+  Principio: minimalista, fondo claro, lectura sin esfuerzo
+  Contrastes verificados WCAG (texto principal 14:1 AAA)
+  Aplica a: app móvil, landing (faroenergy.lat) y logo
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FONDOS
 ──────
-bg              #08050f    Fondo principal (negro con tinte púrpura)
-surface         #100c1c    Superficies secundarias, modales
-card            #171128    Tarjetas
-cardBorder      #241a3c    Bordes de tarjetas
+bg              #faf7f1    Marfil cálido — fondo principal (NUNCA negro)
+surface         #f3eee4    Superficies secundarias, inputs, modales
+card            #ffffff    Tarjetas (el blanco se suaviza con el borde)
+cardBorder      #e7dfd0    Bordes de tarjetas, divisores
 
+COBRE — color de marca y acción principal
+──────────────────────────────────────────
+primary         #b45309    Cobre Faro — CTAs, botones, Available
+primaryDark     #8a3e06    Presionado, links y texto cobre sobre claro (AAA)
+primaryLight    #e8c49a    Acentos suaves, progress
+primaryFaint    #f7ead8    Fondo tenue cobre — chips, badges, selección
 
-GOLD — color de acción principal
-──────────────────────────────────
-gold            #FDB927    Lakers gold — CTAs, Available, acción primaria
-goldDark        #c9941f    Gold oscuro — botones presionados, headers dueño
-goldLight       #fde68a    Gold claro — acentos sutiles
-goldFaint       #1c1000    Fondo tenue dorado — chips, badges
-
-
-PÚRPURA — color secundario / estado Charging
-─────────────────────────────────────────────
-purple          #552583    Lakers purple oficial (referencia)
-purpleActive    #7c3aed    Púrpura activo — estado Charging, elementos vivos
-purpleBg        #1a0d35    Fondo púrpura tenue
-
+ÍNDIGO — estado Charging / elementos vivos
+───────────────────────────────────────────
+charging        #4338ca    Índigo — cargando activamente (AAA s/ fondo)
+chargingBg      #eceafb    Fondo tenue índigo — píldora de sesión activa
 
 TEXTO
 ──────
-textPrimary     #fef9ec    Texto principal (blanco con tinte dorado)
-textSecondary   #fcd97a    Subtítulos, labels activos
-textMuted       #5a4870    Metadata, labels apagados (púrpura apagado)
-
+textPrimary     #2b2520    Espresso — texto principal (14:1 AAA)
+textSecondary   #6b5d4a    Arena oscura — subtítulos, labels (AA)
+textMuted       #94866f    Metadata, placeholders (solo texto grande)
 
 ESTADOS OCPP
 ─────────────
-Available       #FDB927    Gold — disponible y listo
-Charging        #7c3aed    Púrpura — cargando activamente
-Preparing       #fbbf24    Amarillo — preparando
-Faulted         #f87171    Rojo — falla
-Offline         #374151    Gris — desconectado
+Available       #b45309    Cobre — disponible
+Charging        #4338ca    Índigo — cargando
+Preparing       #b45309    Cobre (con fondo primaryFaint)
+Faulted         #b91c1c    Rojo — falla
+Offline         #a8a29e    Gris piedra — desconectado
 
+ADVERTENCIA Y PELIGRO
+──────────────────────
+warning         #92580c    Texto de advertencia
+warningBg       #fbf0dc    Fondo de avisos
+danger          #b91c1c    Acciones destructivas, texto de error
+dangerBg        #fbe7e7    Fondo de avisos destructivos
 
 HEADERS POR ROL
 ────────────────
-headerDriver    #0e0820    Púrpura muy oscuro — conductor
-headerOwner     #120d00    Dorado muy oscuro — dueño
+headerDriver    #f3eee4    Conductor — superficie cálida
+headerOwner     #f7ead8    Dueño — tinte cobre tenue
 
+LOGO
+─────
+Símbolo y texto: cobre #b45309 (o espresso #2b2520 monocromo)
+Sobre fondos oscuros (foto, hero): marfil #faf7f1
+Nunca: negro puro, blanco puro como color de símbolo, degradados
 
-ACCIONES DESTRUCTIVAS
-──────────────────────
-danger          #7f1d1d
-dangerText      #fca5a5
-
-
-COLORES PROHIBIDOS
-───────────────────
-- Verde de cualquier tono (era la paleta anterior)
-- Blanco puro  #ffffff
-- Negro puro   #000000
-- Gradientes
+REGLAS
+───────
+- Fondo SIEMPRE claro: nada de negro ni gris oscuro de base
+- Negro puro #000000 y blanco puro #ffffff prohibidos como TEXTO
+  (#ffffff solo se permite como fondo de tarjeta)
+- Verde de cualquier tono prohibido (cliché del sector EV)
+- Sin gradientes; jerarquía con espacio y peso tipográfico, no con color
+- Sombra de tarjetas: sutil — rgba(43,37,32,0.06), radio 12
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   En código: tokens en T = {...} al inicio de App.js
+  y variables SCSS en landing/src/main.scss
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

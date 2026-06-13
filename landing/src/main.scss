@@ -1,17 +1,18 @@
 // ── Tokens ─────────────────────────────────────────────────────────────────
-$bg:       #14151a;
-$surface:  #1c1d23;
-$card:     #25262e;
-$border:   #32343e;
-$copper:   #d4924a;
-$copper-l: #eab870;
-$copper-d: #a87030;
-$copper-f: #1e1608;
+// Paleta "Faro Claro" v3 — fondo claro (ver DESIGN_PALETTE.txt)
+$bg:       #faf7f1;
+$surface:  #f3eee4;
+$card:     #ffffff;
+$border:   #e7dfd0;
+$copper:   #b45309;
+$copper-l: #c97b2e;
+$copper-d: #8a3e06;
+$copper-f: #f7ead8;
 
-// Texto — contraste asegurado
-$text-hi:  #f0ecdf;   // títulos
-$text-md:  #c4baa8;   // párrafos
-$text-lo:  #7a7468;   // labels secundarios
+// Texto — contraste asegurado (espresso sobre marfil)
+$text-hi:  #2b2520;   // títulos (14:1 AAA)
+$text-md:  #564a3a;   // párrafos
+$text-lo:  #94866f;   // labels secundarios
 
 // ── Reset ──────────────────────────────────────────────────────────────────
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -184,7 +185,7 @@ img { max-width: 100%; display: block; }
 
     // Botón Contactar — contraste reforzado
     .btn--primary {
-      color: #f5ede0;
+      color: #fdfbf7;
       background: $copper-d;
       border: 1.5px solid $copper;
       letter-spacing: 0.2px;
@@ -350,8 +351,8 @@ img { max-width: 100%; display: block; }
   }
 
   &--warm {
-    background: #f5ede0;  // sección clara cálida
-    color: #1a1208;
+    background: #f7ead8;  // sección con tinte cobre
+    color: #2b2520;
   }
 
   &__header {
@@ -662,7 +663,7 @@ img { max-width: 100%; display: block; }
 .cta-section {
   padding: 100px 0;
   text-align: center;
-  background: #f2e8d8;  // cálido marfil — máximo contraste con el resto
+  background: #f7ead8;  // tinte cobre — destaca el CTA en la página clara
   position: relative;
 
   &::before {
@@ -677,7 +678,7 @@ img { max-width: 100%; display: block; }
     font-size: clamp(28px, 4vw, 48px);
     font-weight: 800;
     letter-spacing: -1.5px;
-    color: #1a1208;
+    color: #2b2520;
     max-width: 580px;
     margin: 0 auto 16px;
     line-height: 1.15;
@@ -685,7 +686,7 @@ img { max-width: 100%; display: block; }
 
   p {
     font-size: 16px;
-    color: #5a4830;
+    color: #6b5d4a;
     max-width: 440px;
     margin: 0 auto 48px;
     line-height: 1.7;
@@ -701,21 +702,21 @@ img { max-width: 100%; display: block; }
   .btn--primary {
     background: $copper-d;
     border-color: $copper;
-    color: #f2e8d8;
+    color: #fdfbf7;
     &:hover { background: $copper; }
   }
 
   .btn--outline {
-    border-color: rgba(#1a1208, 0.2);
-    color: #5a4830;
-    &:hover { border-color: $copper-d; color: #1a1208; }
+    border-color: rgba(#2b2520, 0.25);
+    color: #6b5d4a;
+    &:hover { border-color: $copper-d; color: #2b2520; }
   }
 }
 
 // ── Footer ────────────────────────────────────────────────────────────────
 .footer {
   padding: 32px 0;
-  background: #0a0905;
+  background: $surface;
   border-top: 1px solid $border;
 
   &__inner {
@@ -795,7 +796,7 @@ img { max-width: 100%; display: block; }
   &--featured {
     border-color: $copper;
     background: $surface;
-    box-shadow: 0 0 0 1px rgba($copper, 0.3), 0 20px 40px rgba(0,0,0,0.3);
+    box-shadow: 0 0 0 1px rgba($copper, 0.3), 0 16px 36px rgba(43,37,32,0.12);
   }
 
   &__badge {
@@ -1075,7 +1076,7 @@ img { max-width: 100%; display: block; }
   border-radius: 44px;
   padding: 10px;
   border: 1.5px solid #2c2820;
-  box-shadow: 0 32px 80px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.04);
+  box-shadow: 0 24px 60px rgba(43,37,32,0.18), inset 0 0 0 1px rgba(255,255,255,0.04);
   display: inline-block;
   width: 100%;
   max-width: 260px;

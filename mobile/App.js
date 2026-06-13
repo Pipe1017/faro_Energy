@@ -11,40 +11,42 @@ import { Feather } from '@expo/vector-icons';
 
 // ── Design tokens — Cobre y Tierra ──────────────────────────────────────────
 // Sobrio, cálido, premium. Sin verdes ni morados eléctricos.
+// Paleta "Faro Claro" v3 — fondo claro, contrastes WCAG AA/AAA
+// (ver DESIGN_PALETTE.txt; nombres de tokens heredados: green = cobre)
 const T = {
-  // Fondos — negro espresso con tinte cálido
-  bg:         '#0d0b08',
-  surface:    '#161310',
-  card:       '#1e1b16',
-  cardBorder: '#2c2820',
+  // Fondos — marfil cálido, nunca negro
+  bg:         '#faf7f1',
+  surface:    '#f3eee4',
+  card:       '#ffffff',
+  cardBorder: '#e7dfd0',
 
-  // Acción principal — ámbar cobre (warm, no flashy)
-  green:      '#c07d2a',   // nombre heredado, es cobre/ámbar
-  greenDark:  '#9a621e',
-  greenLight: '#d49a50',
-  greenFaint: '#160e02',
+  // Acción principal — cobre Faro
+  green:      '#b45309',   // nombre heredado, es COBRE
+  greenDark:  '#8a3e06',
+  greenLight: '#e8c49a',
+  greenFaint: '#f7ead8',
 
-  // Texto — espectro marfil cálido
-  textPri:    '#ece5d4',   // marfil cálido
-  textSec:    '#a8946a',   // arena dorada apagada
-  textMuted:  '#6b5f4a',   // gris cálido
+  // Texto — espresso sobre claro
+  textPri:    '#2b2520',
+  textSec:    '#6b5d4a',
+  textMuted:  '#94866f',
 
-  // Estado Charging — índigo calmado (no eléctrico)
-  charging:   '#5c4da8',
-  chargingBg: '#0c0820',
+  // Estado Charging — índigo
+  charging:   '#4338ca',
+  chargingBg: '#eceafb',
 
-  // Alerta / advertencia (amber cálido)
-  warning:    '#b87820',
-  warningText:'#e8aa55',
-  warningBg:  '#1a0e02',
+  // Alerta / advertencia
+  warning:    '#92580c',
+  warningText:'#92580c',
+  warningBg:  '#fbf0dc',
 
-  danger:     '#7f1d1d',
-  dangerText: '#fca5a5',
-  offline:    '#3a3630',
-  preparing:  '#7a5a1a',
+  danger:     '#b91c1c',
+  dangerText: '#b91c1c',
+  offline:    '#a8a29e',
+  preparing:  '#b45309',
 
-  headerDriver: '#0e0c09',
-  headerOwner:  '#100d06',
+  headerDriver: '#f3eee4',
+  headerOwner:  '#f7ead8',
 };
 
 const API_URL = 'https://preseason-constable-sappiness.ngrok-free.dev';
@@ -52,7 +54,7 @@ const API_URL = 'https://preseason-constable-sappiness.ngrok-free.dev';
 const STATUS_COLOR = {
   Available: T.green,      // gold
   Charging:  T.charging,   // púrpura
-  Faulted:   '#f87171',
+  Faulted:   '#b91c1c',
   Offline:   T.offline,
   Preparing: T.warningText,
 };
@@ -90,11 +92,11 @@ const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
   }
 
   // Cerca/seleccionado → burbuja con precio
-  const bubbleBg    = isSelected ? '#1a1a1a' : '#ffffff';
-  const priceColor  = isSelected ? '#ffffff' : '#1a1a1a';
-  const specColor   = isSelected ? 'rgba(255,255,255,0.6)' : '#888';
+  const bubbleBg    = isSelected ? '#2b2520' : '#ffffff';
+  const priceColor  = isSelected ? '#ffffff' : '#2b2520';
+  const specColor   = isSelected ? 'rgba(255,255,255,0.6)' : '#94866f';
   const borderColor = isSelected ? color : 'rgba(0,0,0,0.12)';
-  const tipColor    = isSelected ? '#1a1a1a' : '#ffffff';
+  const tipColor    = isSelected ? '#2b2520' : '#ffffff';
 
   return (
     <Marker identifier={charger.id}
@@ -211,12 +213,12 @@ function AuthScreen({ onLogin }) {
 
         <View style={styles.authForm}>
           {mode === 'register' && (
-            <TextInput style={styles.input} placeholder="Nombre completo" placeholderTextColor="#64748b"
+            <TextInput style={styles.input} placeholder="Nombre completo" placeholderTextColor="#94866f"
               value={name} onChangeText={setName} autoCapitalize="words" />
           )}
-          <TextInput style={styles.input} placeholder="Correo electrónico" placeholderTextColor="#64748b"
+          <TextInput style={styles.input} placeholder="Correo electrónico" placeholderTextColor="#94866f"
             value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-          <TextInput style={styles.input} placeholder="Contraseña" placeholderTextColor="#64748b"
+          <TextInput style={styles.input} placeholder="Contraseña" placeholderTextColor="#94866f"
             value={password} onChangeText={setPass} secureTextEntry />
 
           {mode === 'register' && (
@@ -974,10 +976,10 @@ export default function App() {
         {isEditing ? (
           <View style={styles.priceEditor}>
             <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
-              keyboardType="numeric" placeholder="Ej: 1100" placeholderTextColor="#64748b" autoFocus />
+              keyboardType="numeric" placeholder="Ej: 1100" placeholderTextColor="#94866f" autoFocus />
             <Text style={styles.priceUnit}>COP/kWh</Text>
             <TouchableOpacity style={styles.priceSave} onPress={() => savePrice(item.id)}>
-              <Feather name="check" size={18} color={T.textPri} />
+              <Feather name="check" size={18} color="#fdfbf7" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
               <Text style={styles.priceCancelText}>✕</Text>
@@ -1000,7 +1002,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={[styles.header, isOwner ? styles.headerOwner : styles.headerDriver]}>
         {/* Título + avatar */}
@@ -1037,12 +1039,12 @@ export default function App() {
       {tab === 'miuso' && !isOwner ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
           {myUsage?.unpaid_count > 0 && (
-            <View style={{ backgroundColor: '#3d0a0a', borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1.5, borderColor: '#991b1b' }}>
+            <View style={{ backgroundColor: '#fbe7e7', borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1.5, borderColor: '#b91c1c' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <Feather name="alert-circle" size={18} color={T.dangerText} />
                 <Text style={{ color: T.dangerText, fontWeight: '800', fontSize: 15 }}>Pago pendiente</Text>
               </View>
-              <Text style={{ color: '#fca5a5', fontSize: 13, lineHeight: 20 }}>
+              <Text style={{ color: '#b91c1c', fontSize: 13, lineHeight: 20 }}>
                 Tienes {myUsage.unpaid_count} sesión{myUsage.unpaid_count > 1 ? 'es' : ''} sin cobrar porque tu tarjeta fue rechazada.{'\n\n'}
                 No podrás iniciar nuevas cargas hasta resolverlo.{'\n'}
                 Contacta soporte o actualiza tu método de pago.
@@ -1104,7 +1106,7 @@ export default function App() {
                         key={s.id}
                         onPress={() => setSessionDetail(s)}
                         style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10,
-                          backgroundColor: ps === 'UNPAID' ? '#2a0a0a' : i % 2 === 0 ? T.card : T.surface,
+                          backgroundColor: ps === 'UNPAID' ? '#fbe7e7' : i % 2 === 0 ? T.card : T.surface,
                           borderBottomWidth: i < Math.min(sessionsShown, myUsage.sessions.length) - 1 ? 1 : 0,
                           borderBottomColor: T.cardBorder }}
                       >
@@ -1170,7 +1172,7 @@ export default function App() {
                           <Text style={[styles.btnText, { color: T.textMuted, fontSize: 12 }]}>Predeterminar</Text>
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity style={[styles.btn, { flex: 1, marginTop: 0, paddingVertical: 8, backgroundColor: T.danger, borderWidth: 1, borderColor: '#991b1b' }]}
+                      <TouchableOpacity style={[styles.btn, { flex: 1, marginTop: 0, paddingVertical: 8, backgroundColor: '#fbe7e7', borderWidth: 1, borderColor: '#b91c1c' }]}
                         onPress={() => Alert.alert('Eliminar', `¿Eliminar ${m.nickname || m.display}?`, [
                           { text: 'Eliminar', style: 'destructive', onPress: async () => { await apiFetch(`/payment-methods/${m.id}`, { method: 'DELETE' }, token); fetchPaymentMethods(); }},
                           { text: 'Cancelar' }
@@ -1183,7 +1185,7 @@ export default function App() {
                 ))
               )}
               <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setAddMethodModal('card')}>
-                <Feather name="credit-card" size={14} color={T.textPri} />
+                <Feather name="credit-card" size={14} color="#fdfbf7" />
                 <Text style={styles.btnText}>Agregar tarjeta</Text>
               </TouchableOpacity>
 
@@ -1273,7 +1275,7 @@ export default function App() {
                 </View>
                 <View style={[styles.card, { flex: 1 }]}>
                   <Text style={{ color: T.textMuted, fontSize: 11 }}>Dispersado a dueños</Text>
-                  <Text style={{ color: '#ef4444', fontSize: 16, fontWeight: '700', marginTop: 4 }}>
+                  <Text style={{ color: '#b91c1c', fontSize: 16, fontWeight: '700', marginTop: 4 }}>
                     − $ {(adminSummary.disbursed_owners_cop || 0).toLocaleString('es-CO')}
                   </Text>
                 </View>
@@ -1317,7 +1319,7 @@ export default function App() {
                 {[
                   { label: 'Enviadas', value: adminSummary.disb_sent, color: T.green },
                   { label: 'Esperando Wompi', value: adminSummary.disb_pending_activation, color: T.warning },
-                  { label: 'Fallidas', value: adminSummary.disb_failed, color: '#ef4444' },
+                  { label: 'Fallidas', value: adminSummary.disb_failed, color: '#b91c1c' },
                 ].map(d => (
                   <View key={d.label} style={{ flex: 1, backgroundColor: T.surface, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: T.cardBorder }}>
                     <Text style={{ color: d.color, fontSize: 20, fontWeight: '700' }}>{d.value}</Text>
@@ -1540,7 +1542,7 @@ export default function App() {
                     keyboardType="numeric" placeholder="Ej: 1100" placeholderTextColor={T.textMuted} autoFocus />
                   <Text style={styles.priceUnit}>COP/kWh</Text>
                   <TouchableOpacity style={styles.priceSave} onPress={() => savePrice(c.id)}>
-                    <Feather name="check" size={18} color={T.textPri} />
+                    <Feather name="check" size={18} color="#fdfbf7" />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
                     <Feather name="x" size={18} color={T.textMuted} />
@@ -1574,7 +1576,7 @@ export default function App() {
                       Alert.alert('Listo', peak > 0 ? `Tarifa pico de $ ${peak.toLocaleString('es-CO')}/kWh activa de 6 a 10 pm` : 'Tarifa pico desactivada — precio único todo el día');
                     } catch (e) { Alert.alert('Error', e.message); }
                   }}>
-                    <Feather name="check" size={18} color={T.textPri} />
+                    <Feather name="check" size={18} color="#fdfbf7" />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
                     <Feather name="x" size={18} color={T.textMuted} />
@@ -1606,7 +1608,7 @@ export default function App() {
                     setEditingPrice(null); fetchStatus(); fetchEarnings();
                     Alert.alert('Listo', 'Costo de electricidad actualizado');
                   }}>
-                    <Feather name="check" size={18} color={T.textPri} />
+                    <Feather name="check" size={18} color="#fdfbf7" />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
                     <Feather name="x" size={18} color={T.textMuted} />
@@ -1650,7 +1652,7 @@ export default function App() {
                 {/* Eliminar */}
                 <TouchableOpacity
                   style={[styles.btn, { flex: 1, minWidth: 90, marginTop: 0, paddingVertical: 9,
-                    backgroundColor: T.danger, borderWidth: 1, borderColor: '#991b1b' }]}
+                    backgroundColor: '#fbe7e7', borderWidth: 1, borderColor: '#b91c1c' }]}
                   onPress={() => deleteCharger(c)}
                 >
                   <Feather name="trash-2" size={13} color={T.dangerText} />
@@ -1744,7 +1746,7 @@ export default function App() {
                   <Text style={styles.chargerId}>{disbAccount.display}</Text>
                   <Text style={{ color: T.textMuted, fontSize: 12 }}>{disbAccount.holder_name}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: disbAccount.verified ? T.greenFaint : '#2a1a04', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: disbAccount.verified ? T.greenFaint : '#fbf0dc', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
                   <Feather name={disbAccount.verified ? 'check-circle' : 'alert-circle'} size={12} color={disbAccount.verified ? T.green : T.warning} />
                   <Text style={{ color: disbAccount.verified ? T.green : T.warning, fontSize: 11, fontWeight: '600' }}>
                     {disbAccount.verified ? 'Verificada' : 'Sin verificar'}
@@ -1757,8 +1759,8 @@ export default function App() {
                     ⚠ La cuenta no está verificada. Sin verificación no recibirás los pagos al terminar las sesiones.
                   </Text>
                   <TouchableOpacity style={[styles.btn, { backgroundColor: T.greenDark, borderWidth: 1, borderColor: T.warning, marginTop: 0, paddingVertical: 10 }]} onPress={verifyDisbAccount}>
-                    <Feather name="zap" size={14} color="#fbbf24" />
-                    <Text style={[styles.btnText, { color: T.warningText, fontSize: 13 }]}>Verificar cuenta ahora ($500 prueba)</Text>
+                    <Feather name="zap" size={14} color="#fdfbf7" />
+                    <Text style={[styles.btnText, { fontSize: 13 }]}>Verificar cuenta ahora ($500 prueba)</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1769,11 +1771,11 @@ export default function App() {
             </View>
           ) : (
             <>
-              <View style={{ backgroundColor: '#1c0303', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#7f1d1d' }}>
-                <Text style={{ color: '#fca5a5', fontSize: 12 }}>⚠ Sin cuenta registrada no recibirás tus ganancias.</Text>
+              <View style={{ backgroundColor: '#fbe7e7', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#b91c1c' }}>
+                <Text style={{ color: '#b91c1c', fontSize: 12 }}>⚠ Sin cuenta registrada no recibirás tus ganancias.</Text>
               </View>
               <TouchableOpacity style={[styles.btn, styles.btnStart]} onPress={() => setAddDisbModal(true)}>
-                <Feather name="plus" size={16} color={T.textPri} />
+                <Feather name="plus" size={16} color="#fdfbf7" />
                 <Text style={styles.btnText}>Agregar cuenta para cobros</Text>
               </TouchableOpacity>
             </>
@@ -1844,11 +1846,11 @@ export default function App() {
           {/* ── Buscador flotante estilo maps ── */}
           <View style={styles.mapSearchWrap} pointerEvents="box-none">
             <View style={styles.mapSearchBox}>
-              <Feather name="search" size={16} color="#888" style={{ marginRight: 8 }} />
+              <Feather name="search" size={16} color="#94866f" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.mapSearchInput}
                 placeholder="Buscar cargador, ubicación..."
-                placeholderTextColor="#aaa"
+                placeholderTextColor="#94866f"
                 value={mapSearch}
                 onChangeText={setMapSearch}
                 returnKeyType="search"
@@ -1856,7 +1858,7 @@ export default function App() {
               />
               {mapSearch.length > 0 && (
                 <TouchableOpacity onPress={() => setMapSearch('')} style={{ padding: 4 }}>
-                  <Feather name="x" size={15} color="#888" />
+                  <Feather name="x" size={15} color="#94866f" />
                 </TouchableOpacity>
               )}
             </View>
@@ -1882,7 +1884,7 @@ export default function App() {
                     <Feather name="map-pin" size={14} color="#e74c3c" style={{ marginRight: 10 }} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.mapSearchItemId} numberOfLines={1}>{r.name}</Text>
-                      <Text style={[styles.mapSearchItemLoc, { color: '#aaa' }]}>{r.type}</Text>
+                      <Text style={[styles.mapSearchItemLoc, { color: '#94866f' }]}>{r.type}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -1970,7 +1972,7 @@ export default function App() {
               <View style={styles.modalActions}>
                 {isAvail && (
                   <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 2 }]} onPress={() => { setSelectedCharger(null); simulateQrScan(c); }}>
-                    <Feather name="maximize" size={15} color={T.textPri} />
+                    <Feather name="maximize" size={15} color="#fdfbf7" />
                     <Text style={styles.btnText}>Escanear QR</Text>
                   </TouchableOpacity>
                 )}
@@ -2158,7 +2160,7 @@ export default function App() {
                       style={[styles.btn, styles.btnStart, { flex: 2 }]}
                       onPress={() => { close(); simulateQrScan(c); }}
                     >
-                      <Feather name="maximize" size={16} color={T.textPri} />
+                      <Feather name="maximize" size={16} color="#fdfbf7" />
                       <Text style={styles.btnText}>Escanear QR</Text>
                     </TouchableOpacity>
                   )}
@@ -2213,7 +2215,7 @@ export default function App() {
             {!qrScanning && (
               <View style={[styles.modalActions, { width: '100%' }]}>
                 <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={() => { setQrModal(null); setPayMethodsModal(qrModal); }}>
-                  <Feather name="zap" size={16} color={T.textPri} />
+                  <Feather name="zap" size={16} color="#fdfbf7" />
                   <Text style={styles.btnText}>Continuar al pago</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setQrModal(null)}>
@@ -2258,7 +2260,7 @@ export default function App() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={() => { setPayMethodsModal(null); setAddMethodModal('card'); }}>
-                <Feather name="credit-card" size={15} color={T.textPri} />
+                <Feather name="credit-card" size={15} color="#fdfbf7" />
                 <Text style={styles.btnText}>Agregar tarjeta</Text>
               </TouchableOpacity>
             </View>
@@ -2305,7 +2307,7 @@ export default function App() {
               </Text>
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={addCard}>
-                  <Feather name="check" size={16} color={T.textPri} />
+                  <Feather name="check" size={16} color="#fdfbf7" />
                   <Text style={styles.btnText}>Guardar tarjeta</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setAddMethodModal(null)}>
@@ -2382,7 +2384,7 @@ export default function App() {
                   setLocationPicker(null);
                 }}
               >
-                <Feather name="check" size={16} color={T.textPri} />
+                <Feather name="check" size={16} color="#fdfbf7" />
                 <Text style={styles.btnText}>Confirmar ubicación</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -2504,7 +2506,7 @@ export default function App() {
 
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={addCharger}>
-                  <Feather name="plus" size={16} color={T.textPri} />
+                  <Feather name="plus" size={16} color="#fdfbf7" />
                   <Text style={styles.btnText}>Registrar cargador</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setAddChargerModal(false)}>
@@ -2574,7 +2576,7 @@ export default function App() {
 
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={saveDisbAccount}>
-                  <Feather name="check" size={16} color={T.textPri} />
+                  <Feather name="check" size={16} color="#fdfbf7" />
                   <Text style={styles.btnText}>Guardar y verificar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setAddDisbModal(false)}>
@@ -2615,7 +2617,7 @@ export default function App() {
               if (!ps || ps === 'unknown') return null;
               const cfg = {
                 CAPTURED: { icon: 'check-circle', color: T.green,      bg: T.greenFaint,  label: 'Pago exitoso' },
-                UNPAID:   { icon: 'x-circle',     color: T.dangerText, bg: '#2a0a0a',     label: 'Cobro fallido — tarjeta rechazada' },
+                UNPAID:   { icon: 'x-circle',     color: T.dangerText, bg: '#fbe7e7',     label: 'Cobro fallido — tarjeta rechazada' },
                 PENDING:  { icon: 'clock',         color: T.warningText,bg: T.warningBg,   label: 'Procesando pago...' },
                 APPROVED: { icon: 'clock',         color: T.warningText,bg: T.warningBg,   label: 'Procesando pago...' },
               }[ps] || { icon: 'minus-circle', color: T.textMuted, bg: T.surface, label: 'Sin información de pago' };
@@ -2672,7 +2674,7 @@ export default function App() {
               />
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={renameMethod}>
-                  <Feather name="check" size={16} color={T.textPri} />
+                  <Feather name="check" size={16} color="#fdfbf7" />
                   <Text style={styles.btnText}>Guardar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setRenameModal(null)}>
@@ -2732,7 +2734,7 @@ export default function App() {
                 style={[styles.btn, styles.btnStart, { flex: 1 }]}
                 onPress={() => { const { method, charger } = confirmPayModal; setConfirmPayModal(null); payWithMethod(method, charger); }}
               >
-                <Feather name="zap" size={16} color={T.textPri} />
+                <Feather name="zap" size={16} color="#fdfbf7" />
                 <Text style={styles.btnText}>Iniciar carga</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -2775,9 +2777,9 @@ const styles = StyleSheet.create({
   authBg:            { flex: 1 },
   authSpacer:        { height: 200 },
   authKeyboard:      { flex: 1 },
-  authCard:          { flex: 1, backgroundColor: 'rgba(9,8,15,0.93)', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  authCard:          { flex: 1, backgroundColor: 'rgba(250,247,241,0.97)', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   authInner:         { padding: 28, paddingBottom: 24, flexGrow: 1 },
-  authBottomSpacer:  { height: 80, backgroundColor: 'rgba(9,8,15,0.93)' },
+  authBottomSpacer:  { height: 80, backgroundColor: 'rgba(250,247,241,0.97)' },
   authLogoWrap:      { width: 64, height: 64, borderRadius: 32, backgroundColor: T.greenFaint, borderWidth: 1, borderColor: T.greenDark, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
   authTitle:         { color: T.textPri, fontSize: 26, fontWeight: '800', textAlign: 'center', letterSpacing: -0.5 },
   authSub:           { color: T.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 28 },
@@ -2785,7 +2787,7 @@ const styles = StyleSheet.create({
   authTab:           { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center' },
   authTabActive:     { backgroundColor: T.greenDark },
   authTabText:       { color: T.textMuted, fontWeight: '600', fontSize: 14 },
-  authTabTextActive: { color: T.textPri },
+  authTabTextActive: { color: '#fdfbf7' },
   authForm:          { gap: 12 },
   input:             { backgroundColor: T.surface, borderRadius: 14, padding: 16, color: T.textPri, fontSize: 16, borderWidth: 1, borderColor: T.cardBorder },
   roleRow:           { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 },
@@ -2794,9 +2796,9 @@ const styles = StyleSheet.create({
   roleBtnActive:     { backgroundColor: T.greenFaint, borderColor: T.green },
   roleBtnText:       { color: T.textMuted, fontSize: 13, fontWeight: '600' },
   roleBtnTextActive: { color: T.green },
-  authError:         { color: '#ef4444', fontSize: 13, textAlign: 'center' },
+  authError:         { color: '#b91c1c', fontSize: 13, textAlign: 'center' },
   authSubmit:        { backgroundColor: T.greenDark, padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 8, height: 54, justifyContent: 'center', borderWidth: 1, borderColor: T.green },
-  authSubmitText:    { color: T.textPri, fontWeight: '700', fontSize: 16, letterSpacing: 0.3 },
+  authSubmitText:    { color: '#fdfbf7', fontWeight: '700', fontSize: 16, letterSpacing: 0.3 },
   seedHint:          { marginTop: 20, gap: 5, paddingTop: 16, borderTopWidth: 1, borderTopColor: T.cardBorder },
   seedText:          { color: T.textMuted, fontSize: 11, textAlign: 'center' },
 
@@ -2810,16 +2812,16 @@ const styles = StyleSheet.create({
   headerSub:      { color: T.textMuted, fontSize: 12, marginTop: 2 },
   userBadge:      { width: 34, height: 34, borderRadius: 17, backgroundColor: T.charging, justifyContent: 'center', alignItems: 'center' },
   userBadgeOwner: { backgroundColor: T.greenDark },
-  userInitial:    { color: T.textPri, fontWeight: '700', fontSize: 15 },
-  rolePill:       { alignSelf: 'flex-start', marginTop: 10, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  userInitial:    { color: '#fdfbf7', fontWeight: '700', fontSize: 15 },
+  rolePill:       { alignSelf: 'flex-start', marginTop: 10, backgroundColor: 'rgba(43,37,32,0.05)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(43,37,32,0.05)' },
   rolePillText:   { color: T.textMuted, fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
   statsRow:       { flexDirection: 'row', gap: 8, marginTop: 10 },
-  statPill:       { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.07)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  statPill:       { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(43,37,32,0.05)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   statDot:        { width: 6, height: 6, borderRadius: 3 },
   statText:       { color: T.textPri, fontSize: 11, fontWeight: '600' },
-  searchBar:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  searchBar:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(43,37,32,0.05)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10, borderWidth: 1, borderColor: 'rgba(43,37,32,0.10)' },
   searchInput:    { flex: 1, color: T.textPri, fontSize: 13, padding: 0 },
-  serverError:    { color: '#ef4444', fontSize: 11, marginTop: 6 },
+  serverError:    { color: '#b91c1c', fontSize: 11, marginTop: 6 },
   lastUpdate:     { color: T.textMuted, fontSize: 10, marginTop: 3 },
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
@@ -2867,9 +2869,9 @@ const styles = StyleSheet.create({
   // ── Botones ───────────────────────────────────────────────────────────────
   btn:         { marginTop: 12, paddingVertical: 14, borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
   btnStart:    { backgroundColor: T.greenDark, borderWidth: 1.5, borderColor: T.green },
-  btnStop:     { backgroundColor: '#3d1010', borderWidth: 1.5, borderColor: '#7f1d1d' },
+  btnStop:     { backgroundColor: '#fbe7e7', borderWidth: 1.5, borderColor: '#b91c1c' },
   btnReserve:  { backgroundColor: T.surface, borderWidth: 1, borderColor: T.cardBorder },
-  btnText:     { color: T.textPri, fontWeight: '700', fontSize: 15, letterSpacing: 0.2 },
+  btnText:     { color: '#fdfbf7', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 },
 
   // ── Píldora de sesión activa (flotante) ──────────────────────────────────
   sessionPill:      {
@@ -2889,14 +2891,14 @@ const styles = StyleSheet.create({
   sessionPillTitle: { color: T.textPri, fontWeight: '700', fontSize: 14 },
   sessionPillId:    { color: T.charging, fontWeight: '600', fontSize: 13, opacity: 0.9 },
   sessionPillStat:  { color: T.textMuted, fontSize: 12 },
-  sessionPillStop:  { backgroundColor: '#3d1010', borderRadius: 10, padding: 8, borderWidth: 1, borderColor: '#7f1d1d' },
+  sessionPillStop:  { backgroundColor: '#fbe7e7', borderRadius: 10, padding: 8, borderWidth: 1, borderColor: '#b91c1c' },
 
   // ── Modals ────────────────────────────────────────────────────────────────
   modalOverlay:    { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modal:           { backgroundColor: T.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 100, borderTopWidth: 1, borderTopColor: T.cardBorder },
   modalTitle:      { color: T.textPri, fontWeight: '800', fontSize: 20, marginBottom: 4 },
   modalActions:    { flexDirection: 'row', gap: 10, marginTop: 20 },
-  btnSecondary:    { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  btnSecondary:    { backgroundColor: 'rgba(43,37,32,0.05)', borderWidth: 1, borderColor: 'rgba(43,37,32,0.15)' },
 
   qrFrame:         { width: 200, height: 200, borderWidth: 2, borderColor: T.green, borderRadius: 16, justifyContent: 'center', alignItems: 'center', backgroundColor: T.surface, marginBottom: 16 },
   listHint:        { color: T.textMuted, fontSize: 11, marginTop: 8, textAlign: 'center' },
@@ -2919,7 +2921,7 @@ const styles = StyleSheet.create({
   sessionPriceNote: { color: T.textMuted, fontSize: 12, textAlign: 'center' },
   sessionPulse:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   sessionPulseText: { color: T.textMuted, fontSize: 12 },
-  sessionStopBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: T.danger, borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#991b1b' },
+  sessionStopBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#fbe7e7', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#b91c1c' },
   sessionStopText:  { color: T.dangerText, fontWeight: '700', fontSize: 17 },
 
   // ── Empty state ───────────────────────────────────────────────────────────
@@ -2946,7 +2948,7 @@ const styles = StyleSheet.create({
   plRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: T.cardBorder },
   plLabel:   { color: T.textMuted, fontSize: 13 },
   plPos:     { color: T.green, fontWeight: '700', fontSize: 13 },
-  plNeg:     { color: '#f87171', fontWeight: '700', fontSize: 13 },
+  plNeg:     { color: '#b91c1c', fontWeight: '700', fontSize: 13 },
   plTotal:   { borderBottomWidth: 0, marginTop: 4 },
   plTotalLabel: { color: T.textPri, fontWeight: '700', fontSize: 15 },
   plTotalVal:   { color: T.green, fontWeight: '800', fontSize: 17 },
@@ -3013,12 +3015,12 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 8,
     elevation: 8,
   },
-  mapSearchInput:   { flex: 1, fontSize: 15, color: '#1a1a1a', padding: 0 },
+  mapSearchInput:   { flex: 1, fontSize: 15, color: '#2b2520', padding: 0 },
   mapSearchDropdown:{ backgroundColor: '#ffffff', borderRadius: 14, marginTop: 6, overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 6 },
   mapSearchItem:    { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  mapSearchItemId:  { color: '#1a1a1a', fontWeight: '700', fontSize: 14 },
-  mapSearchItemLoc: { color: '#888', fontSize: 12, marginTop: 1 },
+  mapSearchItemId:  { color: '#2b2520', fontWeight: '700', fontSize: 14 },
+  mapSearchItemLoc: { color: '#94866f', fontSize: 12, marginTop: 1 },
   mapSearchItemPrice:{ color: T.green, fontSize: 12, fontWeight: '700' },
 
   // ── Mapa — tira de cargadores ─────────────────────────────────────────────

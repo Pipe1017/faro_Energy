@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" role="img" aria-label="Faro Energy">
+  <!--
+    Faro Energy — propuesta de logo "Faro Claro" v3
+    Colores de DESIGN_PALETTE.txt: cobre #b45309, espresso #2b2520
+    Sin gradientes. El símbolo funciona solo (cuadrado 0 0 120 120).
+  -->
+  <g>
+    <!-- Haz de luz izquierdo -->
+    <path d="M14 38 L52 50 L52 60 L14 52 Z" fill="#b45309" opacity="0.35"/>
+    <!-- Haz de luz derecho -->
+    <path d="M106 38 L68 50 L68 60 L106 52 Z" fill="#b45309" opacity="0.35"/>
+    <!-- Linterna del faro -->
+    <rect x="52" y="44" width="16" height="14" rx="3" fill="#b45309"/>
+    <!-- Techo -->
+    <path d="M50 44 L60 34 L70 44 Z" fill="#2b2520"/>
+    <!-- Torre (trapecio) -->
+    <path d="M53 62 L67 62 L72 98 L48 98 Z" fill="#2b2520"/>
+    <!-- Rayo (energía) calado en la torre -->
+    <path d="M62 66 L55 80 L60 80 L57 92 L66 76 L61 76 Z" fill="#faf7f1"/>
+    <!-- Base -->
+    <rect x="42" y="98" width="36" height="5" rx="2.5" fill="#b45309"/>
+  </g>
+  <text x="128" y="71" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+        font-size="38" font-weight="800" letter-spacing="-1" fill="#2b2520">Faro</text>
+  <text x="222" y="71" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+        font-size="38" font-weight="800" letter-spacing="-1" fill="#b45309">Energy</text>
+  <text x="129" y="92" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
+        font-size="13" font-weight="600" letter-spacing="3" fill="#94866f">CARGA INTELIGENTE</text>
+</svg>
