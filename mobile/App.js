@@ -2951,7 +2951,7 @@ const styles = StyleSheet.create({
   sessionPillStop:  { backgroundColor: '#fbe7e7', borderRadius: 10, padding: 8, borderWidth: 1, borderColor: '#b91c1c' },
 
   // ── Modals ────────────────────────────────────────────────────────────────
-  modalOverlay:    { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalOverlay:    { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', zIndex: 100, elevation: 100 },
   modal:           { backgroundColor: T.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 100, borderTopWidth: 1, borderTopColor: T.cardBorder },
   modalTitle:      { color: T.textPri, fontWeight: '800', fontSize: 20, marginBottom: 4 },
   modalActions:    { flexDirection: 'row', gap: 10, marginTop: 20 },
