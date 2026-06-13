@@ -1062,6 +1062,7 @@ img { max-width: 100%; display: block; }
   // ── Móvil: scroll horizontal, un teléfono a la vez ─────────────────
   @media (max-width: 640px) {
     &__track {
+      flex-wrap: nowrap;      // ← clave: sin esto los teléfonos se apilan en vez de scrollear
       overflow-x: auto;
       overflow-y: visible;
       scroll-snap-type: x mandatory;
@@ -1076,8 +1077,8 @@ img { max-width: 100%; display: block; }
     }
 
     &__slide {
-      flex: 0 0 75vw;
-      max-width: 260px;
+      flex: 0 0 62vw;         // teléfono más pequeño + asoma el siguiente (indica scroll)
+      max-width: 215px;
       scroll-snap-align: center;
     }
 
