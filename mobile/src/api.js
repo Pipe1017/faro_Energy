@@ -1,4 +1,4 @@
-export const API_URL = 'https://preseason-constable-sappiness.ngrok-free.dev';
+export const API_URL = 'https://api.faroenergy.lat';
 
 export async function apiFetch(path, options = {}, token = null) {
   const headers = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1', ...options.headers };
