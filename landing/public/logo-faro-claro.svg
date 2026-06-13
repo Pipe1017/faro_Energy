@@ -1,25 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 120" role="img" aria-label="Faro Energy">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 64" role="img" aria-label="Faro Energy — carga inteligente">
   <!--
-    Faro Energy — logo "Faro Claro" v3 (sin haces de luz)
-    Colores de DESIGN_PALETTE.txt: cobre #b45309, espresso #2b2520
-    Sin gradientes. El símbolo funciona solo: viewBox "36 28 48 78".
+    Faro Energy — logo "Faro Claro" v3 (lockup compacto)
+    Cobre #b45309 · Espresso #2b2520 · Sin gradientes
+    Símbolo solo: usar el <g> con viewBox "0 0 44 64"
   -->
-  <g>
-    <!-- Linterna del faro -->
+  <g transform="translate(2,2) scale(0.87) translate(-38,-34)">
+    <!-- Linterna -->
     <rect x="52" y="44" width="16" height="14" rx="3" fill="#b45309"/>
     <!-- Techo -->
     <path d="M50 44 L60 34 L70 44 Z" fill="#2b2520"/>
-    <!-- Torre (trapecio) -->
+    <!-- Torre -->
     <path d="M53 58 L67 58 L72 98 L48 98 Z" fill="#2b2520"/>
-    <!-- Rayo (energía) calado en la torre -->
+    <!-- Rayo calado -->
     <path d="M62 64 L55 80 L60 80 L57 92 L66 75 L61 75 Z" fill="#faf7f1"/>
     <!-- Base -->
     <rect x="42" y="98" width="36" height="5" rx="2.5" fill="#b45309"/>
   </g>
-  <text x="98" y="71" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
-        font-size="38" font-weight="800" letter-spacing="-1" fill="#2b2520">Faro</text>
-  <text x="192" y="71" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
-        font-size="38" font-weight="800" letter-spacing="-1" fill="#b45309">Energy</text>
-  <text x="99" y="92" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif"
-        font-size="13" font-weight="600" letter-spacing="3" fill="#94866f">CARGA INTELIGENTE</text>
+  <text x="48" y="36" font-family="system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
+        font-size="30" font-weight="800" letter-spacing="-0.8"><tspan fill="#2b2520">Faro</tspan><tspan fill="#b45309" dx="7">Energy</tspan></text>
+  <text x="49" y="54" font-family="system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
+        font-size="10.5" font-weight="700" letter-spacing="2.6" fill="#6b5d4a">CARGA INTELIGENTE</text>
 </svg>

@@ -838,7 +838,7 @@ export default function App() {
       setTimeout(() => {
         Alert.alert(
           'Carga completada',
-          `Energía:   ${finalKwh.toFixed(3)} kWh\nTiempo:    ${finalTime}\nCobrado:   $ ${finalCost.toLocaleString('es-CO')} COP\n\nGracias por usar CPO Colombia`,
+          `Energía:   ${finalKwh.toFixed(3)} kWh\nTiempo:    ${finalTime}\nCobrado:   $ ${finalCost.toLocaleString('es-CO')} COP\n\nGracias por usar Faro Energy`,
           [{ text: 'Ver mi historial', onPress: () => setTab('miuso') }, { text: 'Cerrar' }]
         );
       }, 600);
@@ -1028,7 +1028,17 @@ export default function App() {
       <View style={[styles.header, isOwner ? styles.headerOwner : styles.headerDriver]}>
         {/* Título + avatar */}
         <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>CPO Colombia</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+            <FaroLogo height={34} bolt={isOwner ? T.headerOwner : T.headerDriver} />
+            <View>
+              <Text style={styles.headerTitle}>
+                Faro <Text style={{ color: T.green }}>Energy</Text>
+              </Text>
+              <Text style={{ color: T.textSec, fontSize: 9, fontWeight: '700', letterSpacing: 2.2, marginTop: 1 }}>
+                CARGA INTELIGENTE
+              </Text>
+            </View>
+          </View>
           <TouchableOpacity
             style={[styles.userBadge, isOwner && styles.userBadgeOwner]}
             onPress={() => Alert.alert(user.name, `${user.email}`, [
@@ -2825,7 +2835,10 @@ const styles = StyleSheet.create({
 
   // ── Layout principal ──────────────────────────────────────────────────────
   container:      { flex: 1, backgroundColor: T.bg },
-  header:         { paddingHorizontal: 20, paddingTop: 54, paddingBottom: 14 },
+  header:         { paddingHorizontal: 20, paddingTop: 54, paddingBottom: 14,
+                    borderBottomWidth: 1, borderBottomColor: T.cardBorder,
+                    shadowColor: '#2b2520', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+                    elevation: 4, zIndex: 10 },
   headerDriver:   { backgroundColor: T.headerDriver },
   headerOwner:    { backgroundColor: T.headerOwner },
   headerTop:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
