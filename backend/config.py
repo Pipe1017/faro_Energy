@@ -24,7 +24,7 @@ RESERVE_GRACE_MINUTES    = 5       # gracia extra antes de marcar no-show (25 mi
 RESERVE_FEE_FACTOR       = 0.35    # fracción del valor de energía bloqueada que se retiene
 RESERVE_FEE_MIN_COP      = 1_500   # mínimo (coincide con el mínimo de Wompi)
 RESERVE_FEE_CAP_COP      = 8_000   # tope para no asustar al conductor
-RESERVE_CONVENIENCE_COP  = 1_000   # cuota fija que se cobra si SÍ llega (el resto se libera)
+RESERVE_CONVENIENCE_COP  = 1_500   # cuota fija si SÍ llega (= mínimo Wompi; el resto se libera)
 RESERVE_CHECK_INTERVAL   = 30      # s — cada cuánto el worker revisa reservas vencidas
 
 # URL pública del WebSocket OCPP — lo que el dueño configura en su cargador

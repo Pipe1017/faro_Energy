@@ -105,7 +105,10 @@ async def reserve_charger(
     if pstatus in ("DECLINED", "ERROR", "VOIDED"):
         raise HTTPException(402, "Tu banco rechazó la retención de la garantía. Usa otra tarjeta.")
     if preauth_id is None:
-        raise HTTPException(402, "No se pudo retener la garantía de separación. Intenta más tarde.")
+        # Pre-auth no activa en esta cuenta Wompi (igual que el flujo de energía):
+        # se separa sin retención y la cuota/multa se captura contra la tarjeta
+        # guardada al cerrar la reserva. _capture_reservation cae a payment_source.
+        logger.warning(f"Reserva sin retención (pre-auth no activa) — la cuota/multa se capturará contra la tarjeta guardada de {current_user.email}")
 
     now            = datetime.now(timezone.utc)
     end            = now + timedelta(minutes=RESERVE_MINUTES)

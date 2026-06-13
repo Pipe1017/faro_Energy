@@ -646,7 +646,7 @@ export default function App() {
       'Separar este cargador',
       'Retenemos una garantía en tu tarjeta (no se cobra todavía).\n\n' +
       '• Tienes 20 minutos para llegar.\n' +
-      '• Si cargas, solo se cobra $1.000 de separación y el resto se libera.\n' +
+      '• Si cargas, solo se cobra $1.500 de separación y el resto se libera.\n' +
       '• Si no llegas, se cobra la garantía completa para compensar al dueño por el espacio bloqueado.',
       [
         { text: 'Cancelar', style: 'cancel' },
