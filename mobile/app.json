@@ -7,7 +7,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["comgooglemaps", "waze"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +24,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Faro Energy usa tu ubicación para mostrarte en el mapa y encontrar el cargador más cercano."
+        }
+      ]
     ],
     "extra": {
       "eas": {

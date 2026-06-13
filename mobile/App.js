@@ -15,6 +15,7 @@ import { T, STATUS_COLOR } from './src/theme';
 import { API_URL, apiFetch } from './src/api';
 import { MEDELLIN, formatElapsed } from './src/constants';
 import { KbSheet } from './src/hooks';
+import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
 import { FaroLogo } from './src/components/FaroLogo';
 import { ChargerMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
@@ -78,6 +79,7 @@ export default function App() {
   const [geoResults, setGeoResults] = useState([]);  // resultados de lugares reales
   const [zoom, setZoom]             = useState('mid');
   const mapRef                      = useRef(null);
+  const { coords: userCoords, status: locStatus, loading: locLoading, request: requestLocation } = useUserLocation();
   const stripRef                    = useRef(null);
   const geoTimeout                  = useRef(null);
   const [selectedCharger, setSelectedCharger] = useState(null); // para mapa (pin highlight)
@@ -641,6 +643,32 @@ export default function App() {
     } catch (e) {
       Alert.alert('Error', e.message);
     }
+  };
+
+  // Centra el mapa en mi ubicación y abre el panel del cargador disponible más cercano.
+  const goToNearest = async () => {
+    let coords = userCoords;
+    if (!coords) coords = await requestLocation();
+    if (!coords) {
+      Alert.alert(
+        'Ubicación desactivada',
+        'Activa el permiso de ubicación para encontrar el cargador más cercano a ti.'
+      );
+      return;
+    }
+    const result = nearestCharger(coords, chargers);
+    if (!result) {
+      Alert.alert('Sin cargadores', 'No hay cargadores con ubicación registrada por ahora.');
+      return;
+    }
+    const { charger } = result;
+    setSelectedCharger(charger);
+    setMapSearch('');
+    setGeoResults([]);
+    mapRef.current?.animateToRegion(
+      { latitude: charger.lat, longitude: charger.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 },
+      500
+    );
   };
 
   const cancelReservation = async (reservationId) => {
@@ -1749,6 +1777,8 @@ export default function App() {
             ref={mapRef}
             style={styles.map}
             initialRegion={MEDELLIN}
+            showsUserLocation={locStatus === 'granted'}
+            showsMyLocationButton={false}
             onPress={() => { Keyboard.dismiss(); setSelectedCharger(null); setMapSearch(''); setGeoResults([]); }}
             onRegionChangeComplete={r => {
               if (r.latitudeDelta > 0.07) setZoom('far');
@@ -1848,6 +1878,20 @@ export default function App() {
           </View>
           )}
 
+          {/* ── FAB: cargador disponible más cercano ── */}
+          {!mapOverlayOpen && (
+            <TouchableOpacity
+              style={styles.nearestFab}
+              onPress={goToNearest}
+              activeOpacity={0.85}
+              accessibilityLabel="Cargador más cercano"
+            >
+              {locLoading
+                ? <ActivityIndicator size="small" color="#fdfbf7" />
+                : <Feather name="navigation" size={22} color="#fdfbf7" />}
+            </TouchableOpacity>
+          )}
+
         </View>
       )}
 
@@ -1859,6 +1903,8 @@ export default function App() {
         const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
+        const distKm   = (userCoords && c.lat != null && c.lng != null)
+          ? haversineKm(userCoords, { latitude: c.lat, longitude: c.lng }) : null;
         return (
           <View style={styles.mapPanel}>
             <View style={styles.mapPanelHandle} />
@@ -1881,6 +1927,9 @@ export default function App() {
               <View style={[styles.specChip, { backgroundColor: color + '22', borderColor: color + '55' }]}>
                 <Text style={[styles.specText, { color }]}>{c.status}</Text>
               </View>
+              {distKm != null && (
+                <View style={styles.specChip}><Text style={styles.specText}>a {formatDistance(distKm)}</Text></View>
+              )}
               {c.owner && <View style={styles.specChip}><Text style={styles.specText}>{c.owner}</Text></View>}
             </View>
             {priceUser && (
@@ -1889,6 +1938,13 @@ export default function App() {
                 <Text style={styles.mapPanelPriceNote}>IVA y pasarela incluidos</Text>
               </View>
             )}
+            <TouchableOpacity
+              style={[styles.btn, styles.btnDirections]}
+              onPress={() => openDirections({ lat: c.lat, lng: c.lng, label: c.location || c.id })}
+            >
+              <Feather name="navigation" size={15} color={T.green} />
+              <Text style={[styles.btnText, { color: T.green }]}>Cómo llegar</Text>
+            </TouchableOpacity>
             {isCharg && c.current_kwh != null && (
               <View style={[styles.sessionBox, { marginBottom: 8 }]}>
                 <View style={styles.sessionRow}>
@@ -2023,6 +2079,8 @@ export default function App() {
         const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
+        const distKm   = (userCoords && c.lat != null && c.lng != null)
+          ? haversineKm(userCoords, { latitude: c.lat, longitude: c.lng }) : null;
         const close    = () => { setChargerPanel(null); setSelectedCharger(null); };
 
         return (
@@ -2053,6 +2111,9 @@ export default function App() {
                 <View style={[styles.specChip, { backgroundColor: color + '22', borderColor: color + '55' }]}>
                   <Text style={[styles.specText, { color }]}>{c.status}</Text>
                 </View>
+                {distKm != null && (
+                  <View style={styles.specChip}><Text style={styles.specText}>a {formatDistance(distKm)}</Text></View>
+                )}
               </View>
 
               {/* Precio */}
@@ -2064,6 +2125,15 @@ export default function App() {
                   </View>
                 </View>
               )}
+
+              {/* Cómo llegar */}
+              <TouchableOpacity
+                style={[styles.btn, styles.btnDirections]}
+                onPress={() => openDirections({ lat: c.lat, lng: c.lng, label: c.location || c.id })}
+              >
+                <Feather name="navigation" size={16} color={T.green} />
+                <Text style={[styles.btnText, { color: T.green }]}>Cómo llegar</Text>
+              </TouchableOpacity>
 
               {/* Sesión activa */}
               {isCharg && c.current_kwh != null && (

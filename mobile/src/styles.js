@@ -105,6 +105,7 @@ export const styles = StyleSheet.create({
   // ── Botones ───────────────────────────────────────────────────────────────
   btn:         { marginTop: 12, paddingVertical: 14, borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
   btnStart:    { backgroundColor: T.greenDark, borderWidth: 1.5, borderColor: T.green },
+  btnDirections: { backgroundColor: T.greenFaint, borderWidth: 1.5, borderColor: T.greenLight },
   btnStop:     { backgroundColor: '#fbe7e7', borderWidth: 1.5, borderColor: '#b91c1c' },
   btnReserve:  { backgroundColor: T.surface, borderWidth: 1, borderColor: T.cardBorder },
   btnText:     { color: '#fdfbf7', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 },
@@ -258,6 +259,16 @@ export const styles = StyleSheet.create({
   mapSearchItemId:  { color: '#2b2520', fontWeight: '700', fontSize: 14 },
   mapSearchItemLoc: { color: '#94866f', fontSize: 12, marginTop: 1 },
   mapSearchItemPrice:{ color: T.green, fontSize: 12, fontWeight: '700' },
+
+  // ── Mapa — botón flotante "cargador más cercano" ──────────────────────────
+  nearestFab:       {
+    position: 'absolute', bottom: 80, right: 16,
+    width: 54, height: 54, borderRadius: 27,
+    backgroundColor: T.greenDark, borderWidth: 1.5, borderColor: T.green,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 8,
+    elevation: 8, zIndex: 90,
+  },
 
   // ── Mapa — tira de cargadores ─────────────────────────────────────────────
   mapStrip:         { position: 'absolute', bottom: 70, left: 0, right: 0, zIndex: 100 },
