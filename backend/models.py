@@ -112,8 +112,12 @@ class Charger(Base):
     owner: Mapped["User | None"] = relationship("User", back_populates="chargers")
     sessions: Mapped[list["Session"]] = relationship("Session", back_populates="charger")
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(self, public: bool = False) -> dict:
+        """public=True (listado global /status): omite los datos de la sesión en
+        curso (quién carga, cuánto lleva) — privacidad. Solo deja status, que es
+        info operativa legítima (ocupado/libre). public=False: dueño/conductor
+        viendo lo suyo, sí incluye el detalle de la sesión."""
+        d = {
             "id": self.id,
             "owner": self.owner.name if self.owner else None,
             "owner_id": self.owner_id,
@@ -132,11 +136,15 @@ class Charger(Base):
             "cost_per_kwh": self.cost_per_kwh,
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
             "last_kwh": self.last_kwh,
-            "active_transaction": self.active_transaction,
-            "session_user": mask_email(self.session_user),
-            "session_started_at": self.session_started_at.isoformat() if self.session_started_at else None,
-            "current_kwh": self.current_kwh,
         }
+        if not public:
+            d.update({
+                "active_transaction": self.active_transaction,
+                "session_user": self.session_user,
+                "session_started_at": self.session_started_at.isoformat() if self.session_started_at else None,
+                "current_kwh": self.current_kwh,
+            })
+        return d
 
 
 class Reservation(Base):

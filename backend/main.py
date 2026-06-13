@@ -976,7 +976,7 @@ async def get_status(db: AsyncSession = Depends(get_db)):
     return {
         "connected": list(connected_chargers.keys()),
         "total": len(chargers),
-        "chargers": {c.id: c.to_dict() for c in chargers},
+        "chargers": {c.id: c.to_dict(public=True) for c in chargers},
     }
 
 
@@ -988,7 +988,7 @@ async def get_charger(charge_point_id: str, db: AsyncSession = Depends(get_db)):
     charger = result.scalar_one_or_none()
     if not charger:
         return {"error": "No encontrado"}
-    return charger.to_dict()
+    return charger.to_dict(public=True)
 
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────

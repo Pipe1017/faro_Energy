@@ -319,6 +319,7 @@ export default function App() {
   const [editingPrice, setEditingPrice] = useState(null);
   const [newPrice, setNewPrice]         = useState('');
   const [activeSession, setActiveSession]   = useState(null);
+  const [liveKwh, setLiveKwh]               = useState(0);   // kWh en vivo de MI sesión (de /my-active-session)
   const [elapsed, setElapsed]               = useState(0);
   const [sessionModal, setSessionModal]     = useState(false);
   const [reservations, setReservations]     = useState([]);
@@ -531,49 +532,51 @@ export default function App() {
     }
   }, [selectedCharger]);
 
-  // Polling más rápido (2s) cuando hay sesión activa
-  useEffect(() => {
-    if (!activeSession || !token) return;
-    const t = setInterval(() => fetchStatus(false), 2000);
-    return () => clearInterval(t);
-  }, [activeSession, token]);
-
-  // Detectar cuando el CARGADOR termina la sesión (no el usuario):
-  // cerrar con resumen en vez de dejar la pantalla muerta
+  // Mientras hay sesión activa: polling de /my-active-session — fuente PROPIA
+  // del kWh en vivo y del fin de carga. /status ya no expone datos de sesión
+  // (privacidad), así que la sesión del conductor se sigue solo por aquí.
   const lastKwhRef      = useRef(0);
   const seenChargingRef = useRef(false);
   useEffect(() => {
-    if (!activeSession) { lastKwhRef.current = 0; seenChargingRef.current = false; return; }
-    const c = chargers.find(x => x.id === activeSession.chargerId);
-    if (!c) return;
-    if (c.current_kwh > 0) lastKwhRef.current = c.current_kwh;
-    if (c.status === 'Charging') { seenChargingRef.current = true; return; }
-    // El cargador aún tiene la transacción o está preparando → sigue viva
-    if (c.active_transaction || c.status === 'Preparing') return;
-    // Margen tras iniciar: el RemoteStart tarda 1-2s en reflejarse
-    if (Date.now() - activeSession.startTime < 20000) return;
-
-    // Llegamos aquí: el cargador NO tiene carga activa y ya pasó el margen
-    if (seenChargingRef.current) {
-      // Vimos la carga en curso y terminó → resumen
-      const kwh   = lastKwhRef.current;
-      const price = (c.price_per_kwh_now ?? c.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03;
-      const cost  = Math.round(kwh * price);
-      setActiveSession(null);
-      setSessionModal(false);
-      fetchMyUsage();
-      Alert.alert(
-        'Carga finalizada',
-        `El cargador terminó la sesión.\n\nEnergía:  ${kwh.toFixed(3)} kWh\nCobrado:  $ ${cost.toLocaleString('es-CO')} COP\n\nEl detalle exacto queda en "Mi uso".`,
-        [{ text: 'Ver mi historial', onPress: () => setTab('miuso') }, { text: 'Cerrar' }]
-      );
-    } else {
-      // Barra colgada (estado viejo, cambio de usuario, app reabierta sin
-      // carga real) → quitarla en silencio, sin resumen falso
-      setActiveSession(null);
-      setSessionModal(false);
+    if (!activeSession || !token) {
+      lastKwhRef.current = 0; seenChargingRef.current = false; setLiveKwh(0);
+      return;
     }
-  }, [chargers, activeSession]);
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await apiFetch('/my-active-session', {}, token);
+        if (!alive) return;
+        if (r.active && r.charger) {
+          const kwh = r.charger.current_kwh ?? 0;
+          if (kwh > 0) { lastKwhRef.current = kwh; seenChargingRef.current = true; }
+          setLiveKwh(kwh);
+          return;
+        }
+        // El backend ya no tiene carga mía. Margen de arranque (RemoteStart tarda)
+        if (Date.now() - activeSession.startTime < 20000) return;
+        if (seenChargingRef.current) {
+          // Vimos la carga en curso y terminó → resumen
+          const kwh   = lastKwhRef.current;
+          const ch    = activeSession.charger || {};
+          const price = (ch.price_per_kwh_now ?? ch.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03;
+          const cost  = Math.round(kwh * price);
+          setActiveSession(null); setSessionModal(false); fetchMyUsage();
+          Alert.alert(
+            'Carga finalizada',
+            `El cargador terminó la sesión.\n\nEnergía:  ${kwh.toFixed(3)} kWh\nCobrado:  $ ${cost.toLocaleString('es-CO')} COP\n\nEl detalle exacto queda en "Mi uso".`,
+            [{ text: 'Ver mi historial', onPress: () => setTab('miuso') }, { text: 'Cerrar' }]
+          );
+        } else {
+          // Barra colgada (estado viejo / sin carga real) → quitar en silencio
+          setActiveSession(null); setSessionModal(false);
+        }
+      } catch {}
+    };
+    poll();
+    const t = setInterval(poll, 2000);
+    return () => { alive = false; clearInterval(t); };
+  }, [activeSession, token]);
 
   const fetchEarnings = async () => {
     try { setEarnings(await apiFetch('/my-earnings', {}, token)); } catch {}
@@ -990,7 +993,7 @@ export default function App() {
 
   // Datos de sesión activa para mini-barra y modal
   const liveCharger  = activeSession ? (chargers.find(c => c.id === activeSession.chargerId) || activeSession.charger) : null;
-  const sessionKwh   = liveCharger?.current_kwh ?? 0;
+  const sessionKwh   = liveKwh;   // kWh propio en vivo (de /my-active-session)
   const sessionPrice = (liveCharger?.price_per_kwh_now ?? liveCharger?.price_per_kwh) ? (liveCharger.price_per_kwh_now ?? liveCharger.price_per_kwh) * 1.10 * 1.19 * 1.03 : 0;
   const sessionCost  = Math.round(sessionKwh * sessionPrice);
 
