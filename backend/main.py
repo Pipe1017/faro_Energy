@@ -284,6 +284,19 @@ class ChargePoint(cp):
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, self.id)
             if charger:
+                # Un BootNotification = el cargador (re)arrancó y perdió el
+                # contexto de cualquier sesión en curso. Limpiar la transacción
+                # colgada evita una "sesión fantasma" (barra morada sin carga real)
+                if charger.active_transaction:
+                    logger.warning(
+                        f"[{self.id}] Boot con sesión colgada (tx#{charger.active_transaction}, "
+                        f"{charger.current_kwh or 0} kWh) — el cargador reinició, se descarta"
+                    )
+                    charger.active_transaction = None
+                    charger.session_user = None
+                    charger.session_started_at = None
+                    charger.current_kwh = None
+                    charger.meter_start = None
                 charger.status = "Available"
                 charger.model = charge_point_model
                 charger.vendor = charge_point_vendor
