@@ -1,0 +1,5 @@
+# Netlify — despliega solo la landing (landing/ → dist/)
+[build]
+  base    = "landing"
+  command = "npm install && npm run build"
+  publish = "dist"
