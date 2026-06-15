@@ -58,6 +58,7 @@ export default function App() {
   const [renameModal, setRenameModal]     = useState(null);
   const [adminSummary, setAdminSummary]   = useState(null);
   const [sessionDetail, setSessionDetail] = useState(null); // sesión seleccionada para ver detalle
+  const [ratePrompt, setRatePrompt]       = useState(null); // {sessionId, kwh, cost} → calificar al terminar la carga
   const [sessionsShown, setSessionsShown] = useState(5);    // paginación local
   const [myDisburses, setMyDisburses]     = useState(null);
   const [addChargerModal, setAddChargerModal] = useState(false);
@@ -285,12 +286,15 @@ export default function App() {
           const ch    = activeSession.charger || {};
           const price = (ch.price_per_kwh_now ?? ch.price_per_kwh ?? 0) * 1.19;
           const cost  = Math.round(kwh * price);
-          setActiveSession(null); setSessionModal(false); fetchMyUsage();
-          Alert.alert(
-            'Carga finalizada',
-            `El cargador terminó la sesión.\n\nEnergía:  ${kwh.toFixed(3)} kWh\nCobrado:  $ ${cost.toLocaleString('es-CO')} COP\n\nEl detalle exacto queda en "Mi uso".`,
-            [{ text: 'Ver mi historial', onPress: () => setTab('miuso') }, { text: 'Cerrar' }]
-          );
+          setActiveSession(null); setSessionModal(false);
+          // Traer la sesión recién cerrada para poder calificarla en el prompt
+          let sid = null;
+          try {
+            const u = await apiFetch('/my-sessions', {}, token);
+            setMyUsage(u);
+            sid = u.sessions?.[0]?.id ?? null;
+          } catch {}
+          setRatePrompt({ sessionId: sid, kwh, cost });
         } else {
           // Barra colgada (estado viejo / sin carga real) → quitar en silencio
           setActiveSession(null); setSessionModal(false);
@@ -2083,6 +2087,51 @@ export default function App() {
             <Feather name="square" size={14} color={T.dangerText} />
           </TouchableOpacity>
         </TouchableOpacity>
+      )}
+
+      {/* ── Prompt al terminar la carga: recibo + calificación ── */}
+      {ratePrompt && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <View style={styles.mapPanelHandle} />
+            <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+              <Feather name="check-circle" size={44} color={T.green} />
+              <Text style={{ color: T.textPri, fontWeight: '800', fontSize: 20, marginTop: 10 }}>¡Carga completada!</Text>
+              <Text style={{ color: T.textSec, fontSize: 15, marginTop: 4 }}>
+                {ratePrompt.kwh.toFixed(3)} kWh · $ {ratePrompt.cost.toLocaleString('es-CO')} COP
+              </Text>
+            </View>
+
+            {ratePrompt.sessionId ? (
+              <>
+                <Text style={{ color: T.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16, marginBottom: 12 }}>
+                  ¿Cómo estuvo el servicio?
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() => { rateSession(ratePrompt.sessionId, true); setRatePrompt(null); }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 13, paddingHorizontal: 26, borderRadius: 12, borderWidth: 1.5, borderColor: T.green, backgroundColor: T.greenFaint }}>
+                    <Feather name="thumbs-up" size={19} color={T.green} />
+                    <Text style={{ color: T.green, fontWeight: '700', fontSize: 14 }}>Bien</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { rateSession(ratePrompt.sessionId, false); setRatePrompt(null); }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 13, paddingHorizontal: 26, borderRadius: 12, borderWidth: 1.5, borderColor: T.cardBorder, backgroundColor: T.surface }}>
+                    <Feather name="thumbs-down" size={19} color={T.dangerText} />
+                    <Text style={{ color: T.dangerText, fontWeight: '700', fontSize: 14 }}>Mal</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
+
+            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 18 }]} onPress={() => setRatePrompt(null)}>
+              <Text style={[styles.btnText, { color: T.textMuted }]}>{ratePrompt.sessionId ? 'Ahora no' : 'Cerrar'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ marginTop: 12, alignItems: 'center' }} onPress={() => { setRatePrompt(null); setTab('miuso'); }}>
+              <Text style={{ color: T.green, fontSize: 13, fontWeight: '600' }}>Ver mi historial</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       {/* ── Modal detalle sesión ── */}
