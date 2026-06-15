@@ -118,7 +118,7 @@ async def reserve_charger(
     response = await charger_conn.call(call.ReserveNowPayload(
         connector_id=1,
         expiry_date=no_show_at.isoformat(),
-        id_tag=current_user.email,
+        id_tag=current_user.id[:20],   # OCPP idTag ≤ 20 chars (no cabe el email)
         reservation_id=reservation_id,
     ))
     if response.status != "Accepted":

@@ -130,14 +130,21 @@ class ChargePoint(cp):
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, self.id)
             if charger:
+                # El idTag de OCPP tiene tope de 20 chars, así que mandamos el prefijo
+                # del id del usuario; aquí lo resolvemos de vuelta a su email para el
+                # emparejamiento de sesiones (cae al id_tag tal cual si no lo encuentra).
+                session_user = id_tag
+                u = (await db.execute(select(User).where(User.id.like(f"{id_tag}%")).limit(1))).scalar_one_or_none()
+                if u:
+                    session_user = u.email
                 charger.status = "Charging"
                 charger.active_transaction = tx_id
-                charger.session_user = id_tag
+                charger.session_user = session_user
                 charger.meter_start = meter_start
                 charger.session_started_at = datetime.now(timezone.utc)
                 charger.current_kwh = 0.0   # resetear al iniciar sesión nueva
                 _notify_owner(db, charger.owner_id, "SESSION_STARTED",
-                              f"{self.id}: carga iniciada por {id_tag}", self.id)
+                              f"{self.id}: carga iniciada por {session_user}", self.id)
                 await db.commit()
         return call_result.StartTransactionPayload(transaction_id=tx_id, id_tag_info={"status": "Accepted"})
 
