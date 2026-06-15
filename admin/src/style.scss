@@ -127,6 +127,19 @@ td.err { color: $danger; font-size: .8rem; max-width: 220px; }
   border-radius: 12px; padding: 1rem 1.2rem;
 }
 
+// ── Mapa ──────────────────────────────────────────────
+.legend {
+  display: flex; align-items: center; gap: 1.2rem; margin: 1.2rem 0 .8rem;
+  font-size: .85rem; color: $espresso; flex-wrap: wrap;
+  span { display: inline-flex; align-items: center; gap: .4rem; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+}
+#map {
+  height: 460px; width: 100%; border-radius: 14px; border: 1px solid $border;
+  overflow: hidden; z-index: 0;
+}
+.leaflet-popup-content { font-size: .85rem; line-height: 1.4; }
+
 @media (max-width: 640px) {
   .shell { flex-direction: column; }
   .side { width: auto; flex-direction: row; align-items: center; nav { flex-direction: row; } }

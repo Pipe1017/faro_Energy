@@ -1,4 +1,6 @@
 import './style.scss';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Base de la API. En prod apunta al backend (Cloudflare Tunnel).
 // Override local: VITE_API_URL=http://localhost:8000 npm run dev
@@ -7,7 +9,17 @@ const TOKEN_KEY = 'faro_admin_token';
 
 const app = document.getElementById('app');
 let token = localStorage.getItem(TOKEN_KEY) || null;
-let state = { tab: 'resumen', overview: null, invoices: [], owners: [], invFilter: '' };
+let state = { tab: 'resumen', overview: null, invoices: [], owners: [], invFilter: '', chargersData: { chargers: [], counts: {} } };
+
+// Estado del mapa (Leaflet) — vive fuera del re-render para no recrearlo en cada refresco
+let mapInstance = null, markersLayer = null, mapTimer = null;
+const STATE_COLOR = { charging: '#4f46e5', available: '#15803d', offline: '#b91c1c' };
+const STATE_LABEL = { charging: 'Cargando', available: 'Disponible', offline: 'Fuera de línea' };
+
+function clearMap() {
+  if (mapTimer) { clearInterval(mapTimer); mapTimer = null; }
+  if (mapInstance) { mapInstance.remove(); mapInstance = null; markersLayer = null; }
+}
 
 // ── API helper ────────────────────────────────────────────────────────────────
 async function api(path, options = {}) {
@@ -72,7 +84,8 @@ function renderLogin(error = '') {
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function renderApp() {
-  const tabs = [['resumen', 'Resumen'], ['facturas', 'Facturas'], ['duenos', 'Dueños']];
+  clearMap();  // al cambiar de pestaña, soltar el mapa anterior
+  const tabs = [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['duenos', 'Dueños']];
   app.innerHTML = `
     <div class="shell">
       <aside class="side">
@@ -94,6 +107,7 @@ async function renderTab() {
   const view = document.getElementById('view');
   try {
     if (state.tab === 'resumen') { state.overview = await api('/admin/overview'); renderResumen(view); }
+    else if (state.tab === 'mapa') { state.chargersData = await api('/admin/chargers'); renderMapa(view); }
     else if (state.tab === 'facturas') { state.invoices = await api(`/admin/invoices${state.invFilter ? '?status=' + state.invFilter : ''}`); renderFacturas(view); }
     else if (state.tab === 'duenos') { state.owners = await api('/admin/owners'); renderDuenos(view); }
   } catch (err) {
@@ -131,6 +145,93 @@ function renderResumen(view) {
       ${card('Emitidas', o.invoices.issued, '', 'ok')}
       ${card('Fallidas', o.invoices.failed, 'requieren reintento', o.invoices.failed ? 'danger' : '')}
     </div>`;
+}
+
+// ── Mapa de monitoreo ───────────────────────────────────────────────────────────
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function mapCountsHtml(counts) {
+  return `
+    ${card('Total', counts.total ?? 0)}
+    ${card('En línea', counts.online ?? 0, '', 'ok')}
+    ${card('Cargando', counts.charging ?? 0)}
+    ${card('Fuera de línea', counts.offline ?? 0, counts.offline ? 'requieren atención' : '', counts.offline ? 'danger' : '')}`;
+}
+
+function offlineHtml(chargers) {
+  const off = chargers.filter((c) => c.state === 'offline');
+  if (!off.length) return `<div class="section-title">Todo en línea ✓</div>`;
+  return `<div class="section-title">Fuera de línea (${off.length})</div>
+    <table><thead><tr><th>ID</th><th>Lugar</th><th>Dueño</th><th>Última señal</th></tr></thead>
+    <tbody>${off.map((c) => `<tr><td>${c.id}</td><td class="muted">${c.location || ''}</td><td>${c.owner || '—'}</td><td class="muted">${fmtTime(c.last_seen)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderMapa(view) {
+  const { chargers, counts } = state.chargersData;
+  view.innerHTML = `
+    <h1>Mapa de monitoreo</h1>
+    <div id="map-counts" class="cards">${mapCountsHtml(counts)}</div>
+    <div class="legend">
+      <span><i class="dot" style="background:${STATE_COLOR.available}"></i>Disponible</span>
+      <span><i class="dot" style="background:${STATE_COLOR.charging}"></i>Cargando</span>
+      <span><i class="dot" style="background:${STATE_COLOR.offline}"></i>Fuera de línea</span>
+      <span class="muted" style="margin-left:auto;">Se actualiza cada 20 s</span>
+    </div>
+    <div id="map"></div>
+    <div id="map-offline">${offlineHtml(chargers)}</div>`;
+
+  initMap(chargers);
+
+  // Refresco en vivo sin recrear el mapa (conserva el zoom/posición del usuario)
+  mapTimer = setInterval(async () => {
+    if (state.tab !== 'mapa') return;
+    try {
+      state.chargersData = await api('/admin/chargers');
+      const cc = document.getElementById('map-counts');
+      const oo = document.getElementById('map-offline');
+      if (cc) cc.innerHTML = mapCountsHtml(state.chargersData.counts);
+      if (oo) oo.innerHTML = offlineHtml(state.chargersData.chargers);
+      updateMarkers(state.chargersData.chargers);
+    } catch { /* silencioso */ }
+  }, 20000);
+}
+
+function initMap(chargers) {
+  const el = document.getElementById('map');
+  if (!el) return;
+  if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+  mapInstance = L.map(el).setView([6.22, -75.58], 12);  // Medellín
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19,
+  }).addTo(mapInstance);
+  markersLayer = L.layerGroup().addTo(mapInstance);
+  updateMarkers(chargers, true);
+  setTimeout(() => mapInstance && mapInstance.invalidateSize(), 120);
+}
+
+function updateMarkers(chargers, fit = false) {
+  if (!mapInstance || !markersLayer) return;
+  markersLayer.clearLayers();
+  const pts = [];
+  chargers.forEach((c) => {
+    if (c.lat == null || c.lng == null) return;
+    const color = STATE_COLOR[c.state] || '#8a7d72';
+    const sess = c.state === 'charging'
+      ? `<br>⚡ ${c.current_kwh ?? 0} kWh · ${c.session_user || ''}` : '';
+    L.circleMarker([c.lat, c.lng], {
+      radius: 9, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1,
+    }).bindPopup(
+      `<b>${c.id}</b><br>${c.location || ''}<br>` +
+      `<span style="color:${color};font-weight:700;">${STATE_LABEL[c.state]}</span> · ${c.power_kw || '?'} kW<br>` +
+      `Dueño: ${c.owner || '—'}${sess}`
+    ).addTo(markersLayer);
+    pts.push([c.lat, c.lng]);
+  });
+  if (fit && pts.length) mapInstance.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
 }
 
 // ── Facturas ────────────────────────────────────────────────────────────────────

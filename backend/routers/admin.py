@@ -9,10 +9,11 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction
+from models import User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction, mask_email
 from auth import get_current_user
 from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA
 from engine import _faro_balance_cents
@@ -89,6 +90,44 @@ async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(
             "pending": inv_counts.get("PENDING", 0),
             "issued":  inv_counts.get("ISSUED", 0),
             "failed":  inv_counts.get("FAILED", 0),
+        },
+    }
+
+
+@router.get("/chargers")
+async def list_chargers(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Todos los cargadores con su estado operativo para el mapa de monitoreo.
+    `state`: charging | available | offline (offline = sin conexión OCPP viva)."""
+    result = await db.execute(
+        select(Charger).options(selectinload(Charger.owner)).order_by(Charger.id)
+    )
+    chargers = result.scalars().all()
+    out = []
+    for c in chargers:
+        online = c.id in connected_chargers
+        if not online:
+            state = "offline"
+        elif (c.status or "").lower() == "charging":
+            state = "charging"
+        else:
+            state = "available"
+        out.append({
+            "id": c.id, "location": c.location, "lat": c.lat, "lng": c.lng,
+            "owner": c.owner.name if c.owner else None,
+            "status": c.status, "online": online, "state": state,
+            "power_kw": c.power_kw, "connector": c.connector_type,
+            "price_now": c.price_at(),
+            "current_kwh": round(c.current_kwh, 2) if c.current_kwh is not None else None,
+            "session_user": mask_email(c.session_user) if c.session_user else None,
+            "last_seen": c.last_seen.isoformat() if c.last_seen else None,
+        })
+    return {
+        "chargers": out,
+        "counts": {
+            "total": len(out),
+            "online": sum(1 for x in out if x["online"]),
+            "charging": sum(1 for x in out if x["state"] == "charging"),
+            "offline": sum(1 for x in out if x["state"] == "offline"),
         },
     }
 
