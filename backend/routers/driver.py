@@ -14,7 +14,7 @@ from ocpp.v16.enums import AvailabilityType
 from database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerRating)
 from auth import get_current_user, hash_password, verify_password, create_token
 import wompi as wompi_svc
 import sim as sim_mgr
@@ -82,9 +82,16 @@ async def my_sessions(
 
     unpaid_count = sum(1 for p in all_payments if p.status == "UNPAID")
 
+    # Calificación propia de cada sesión (para mostrar el 👍/👎 o si ya votó)
+    ratings_r = await db.execute(
+        select(ChargerRating).where(ChargerRating.session_id.in_(session_ids))
+    ) if session_ids else None
+    my_rating = {r.session_id: r.good for r in ratings_r.scalars().all()} if ratings_r else {}
+
     def session_dict(s):
         d = s.to_dict()
         d["payment_status"] = pay_by_session.get(s.id, "unknown")
+        d["my_rating"] = my_rating.get(s.id)   # True 👍 | False 👎 | None (sin calificar)
         return d
 
     return {
@@ -95,6 +102,48 @@ async def my_sessions(
         "sessions": [session_dict(s) for s in sessions],
     }
 
+
+
+# ── CALIFICACIÓN DEL CARGADOR (conductor) ─────────────────────────────────────
+
+class RateBody(BaseModel):
+    good: bool   # True = 👍 funcionó bien · False = 👎 hubo problema
+
+
+@router.post("/my-sessions/{session_id}/rate")
+async def rate_session(session_id: int, body: RateBody,
+                       current_user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_db)):
+    """Calificación discreta de una sesión propia. Una por sesión (editable).
+    Ajusta los contadores agregados del cargador."""
+    session = await db.get(Session, session_id)
+    if not session or session.session_user != current_user.email:
+        raise HTTPException(404, "Sesión no encontrada")
+    charger = await db.get(Charger, session.charger_id)
+    if not charger:
+        raise HTTPException(404, "Cargador no encontrado")
+
+    existing = await db.execute(select(ChargerRating).where(ChargerRating.session_id == session_id))
+    rating = existing.scalar_one_or_none()
+    if rating:
+        if rating.good != body.good:   # cambió el voto → mover contadores
+            if rating.good:
+                charger.rating_up = max(0, (charger.rating_up or 0) - 1)
+                charger.rating_down = (charger.rating_down or 0) + 1
+            else:
+                charger.rating_down = max(0, (charger.rating_down or 0) - 1)
+                charger.rating_up = (charger.rating_up or 0) + 1
+            rating.good = body.good
+    else:
+        db.add(ChargerRating(charger_id=charger.id, session_id=session_id,
+                             user_id=current_user.id, good=body.good))
+        if body.good:
+            charger.rating_up = (charger.rating_up or 0) + 1
+        else:
+            charger.rating_down = (charger.rating_down or 0) + 1
+    await db.commit()
+    return {"ok": True, "good": body.good,
+            "rating_up": charger.rating_up or 0, "rating_down": charger.rating_down or 0}
 
 
 # ── MÉTODOS DE PAGO (conductor) ───────────────────────────────────────────────

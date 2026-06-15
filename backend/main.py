@@ -65,6 +65,8 @@ async def startup():
         ("ALTER TABLE ledger_entries ALTER COLUMN owner_id DROP NOT NULL",                          "owner_id nullable en ledger_entries"),
         ("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE",                        "email_verified en users"),
         ("ALTER TABLE users ADD COLUMN email_verify_token TEXT",                                     "email_verify_token en users"),
+        ("ALTER TABLE chargers ADD COLUMN rating_up INTEGER DEFAULT 0",                              "rating_up en chargers"),
+        ("ALTER TABLE chargers ADD COLUMN rating_down INTEGER DEFAULT 0",                            "rating_down en chargers"),
     ]:
         try:
             async with engine.begin() as conn:

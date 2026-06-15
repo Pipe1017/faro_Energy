@@ -117,6 +117,9 @@ class Charger(Base):
     session_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     current_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     meter_start: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Calificación discreta: contadores 👍/👎 (denormalizados para leer barato)
+    rating_up: Mapped[int] = mapped_column(Integer, default=0)
+    rating_down: Mapped[int] = mapped_column(Integer, default=0)
 
     owner: Mapped["User | None"] = relationship("User", back_populates="chargers")
     sessions: Mapped[list["Session"]] = relationship("Session", back_populates="charger")
@@ -145,6 +148,13 @@ class Charger(Base):
             "cost_per_kwh": self.cost_per_kwh,
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
             "last_kwh": self.last_kwh,
+            "rating_up": self.rating_up or 0,
+            "rating_down": self.rating_down or 0,
+            "rating_total": (self.rating_up or 0) + (self.rating_down or 0),
+            "rating_pct": (
+                round((self.rating_up or 0) * 100 / ((self.rating_up or 0) + (self.rating_down or 0)))
+                if ((self.rating_up or 0) + (self.rating_down or 0)) else None
+            ),
         }
         if not public:
             d.update({
@@ -467,3 +477,19 @@ class Invoice(Base):
             "status": self.status, "number": self.number, "cufe": self.cufe,
             "pdf_url": self.pdf_url, "created_at": self.created_at.isoformat(),
         }
+
+
+# ── Calificación de un cargador ───────────────────────────────────────────────
+# Discreta: solo 👍/👎 ("¿funcionó bien el servicio?"). Atada a una sesión cerrada
+# (one-per-session) → solo quien cargó puede calificar, una sola vez (editable).
+# Los contadores agregados viven en Charger.rating_up/down.
+
+class ChargerRating(Base):
+    __tablename__ = "charger_ratings"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    charger_id: Mapped[str] = mapped_column(String, ForeignKey("chargers.id"), index=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("sessions.id"), unique=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
+    good: Mapped[bool] = mapped_column(Boolean)   # True = 👍, False = 👎
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
