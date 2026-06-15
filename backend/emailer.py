@@ -35,9 +35,31 @@ PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE", "https://api.faroenergy.lat").rst
 # tener sus buzones. Dejar vacío en producción.
 EMAIL_REDIRECT_TO = os.getenv("EMAIL_REDIRECT_TO", "").strip()
 
+# Proveedor de envío: "smtp" (Gmail u otro) o "resend" (API HTTP, mejor entregabilidad).
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "smtp").lower()
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+# En modo prueba (sin dominio verificado) Resend exige enviar DESDE onboarding@resend.dev
+# y SOLO al correo de tu cuenta Resend. Con EMAIL_REDIRECT_TO a ese correo, todo cuadra.
+RESEND_FROM = os.getenv("RESEND_FROM", "Faro Energy <onboarding@resend.dev>")
+
 
 def is_configured() -> bool:
+    if EMAIL_PROVIDER == "resend":
+        return bool(RESEND_API_KEY)
     return bool(SMTP_USER and SMTP_PASSWORD)
+
+
+async def _send_resend(to: str, subject: str, html: str, text: str):
+    """Envía vía API de Resend (HTTP)."""
+    import httpx
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={"from": RESEND_FROM, "to": [to], "subject": subject, "html": html, "text": text},
+        )
+        if r.status_code >= 300:
+            raise RuntimeError(f"Resend {r.status_code}: {r.text}")
 
 
 def _send_sync(to: str, subject: str, html: str, text: str):
@@ -59,15 +81,19 @@ async def send_email(to: str, subject: str, html: str, text: str = "") -> bool:
     if not to or "@" not in to:
         return False
     if not is_configured():
-        logger.warning(f"SMTP no configurado — email a {to} ('{subject}') NO enviado")
+        logger.warning(f"Email ({EMAIL_PROVIDER}) no configurado — a {to} ('{subject}') NO enviado")
         return False
     real_to, send_to = to, to
     if EMAIL_REDIRECT_TO:
         subject = f"[para: {real_to}] {subject}"
         send_to = EMAIL_REDIRECT_TO
+    body_text = text or "Abre este correo en un cliente con HTML."
     try:
-        await asyncio.to_thread(_send_sync, send_to, subject, html, text or "Abre este correo en un cliente con HTML.")
-        logger.info(f"✉ Email a {send_to}{f' (real: {real_to})' if EMAIL_REDIRECT_TO else ''}: {subject}")
+        if EMAIL_PROVIDER == "resend":
+            await _send_resend(send_to, subject, html, body_text)
+        else:
+            await asyncio.to_thread(_send_sync, send_to, subject, html, body_text)
+        logger.info(f"✉ Email [{EMAIL_PROVIDER}] a {send_to}{f' (real: {real_to})' if EMAIL_REDIRECT_TO else ''}: {subject}")
         return True
     except Exception as e:
         logger.warning(f"Error enviando email a {to}: {e}")
