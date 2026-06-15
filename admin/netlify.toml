@@ -1,7 +1,8 @@
 # Sitio Netlify aparte para el back-office (admin.faroenergy.lat).
-# Conectar como un SEGUNDO sitio en Netlify con base directory = "admin".
+# IMPORTANTE: al crear el sitio, en la UI de Netlify pon "Base directory = admin".
+# Con eso Netlify lee ESTE archivo (no el netlify.toml raíz de la landing) y las
+# rutas de abajo quedan relativas a admin/. Por eso aquí NO se vuelve a poner base.
 [build]
-  base = "admin"
   command = "npm run build"
   publish = "dist"
 
