@@ -283,7 +283,7 @@ export default function App() {
           // Vimos la carga en curso y terminó → resumen
           const kwh   = lastKwhRef.current;
           const ch    = activeSession.charger || {};
-          const price = (ch.price_per_kwh_now ?? ch.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03;
+          const price = (ch.price_per_kwh_now ?? ch.price_per_kwh ?? 0) * 1.19;
           const cost  = Math.round(kwh * price);
           setActiveSession(null); setSessionModal(false); fetchMyUsage();
           Alert.alert(
@@ -309,6 +309,15 @@ export default function App() {
   const fetchMyUsage = async () => {
     try { setMyUsage(await apiFetch('/my-sessions', {}, token)); } catch {}
     try { setDebts(await apiFetch('/my-debts', {}, token)); } catch {}
+  };
+
+  // Calificación discreta 👍/👎 de una sesión (solo quien cargó)
+  const rateSession = async (sessionId, good) => {
+    try {
+      await apiFetch(`/my-sessions/${sessionId}/rate`, { method: 'POST', body: JSON.stringify({ good }) }, token);
+      setSessionDetail(sd => (sd && sd.id === sessionId) ? { ...sd, my_rating: good } : sd);
+      fetchMyUsage();
+    } catch (e) { Alert.alert('No se pudo calificar', e.message); }
   };
 
   // Pagar una deuda con el método elegido y desbloquear al conductor
@@ -780,7 +789,7 @@ export default function App() {
   // Datos de sesión activa para mini-barra y modal
   const liveCharger  = activeSession ? (chargers.find(c => c.id === activeSession.chargerId) || activeSession.charger) : null;
   const sessionKwh   = liveKwh;   // kWh propio en vivo (de /my-active-session)
-  const sessionPrice = (liveCharger?.price_per_kwh_now ?? liveCharger?.price_per_kwh) ? (liveCharger.price_per_kwh_now ?? liveCharger.price_per_kwh) * 1.10 * 1.19 * 1.03 : 0;
+  const sessionPrice = (liveCharger?.price_per_kwh_now ?? liveCharger?.price_per_kwh) ? (liveCharger.price_per_kwh_now ?? liveCharger.price_per_kwh) * 1.19 : 0;
   const sessionCost  = Math.round(sessionKwh * sessionPrice);
 
 
@@ -807,7 +816,7 @@ export default function App() {
     const isCharging = item.status === 'Charging';
     const isOffline  = item.status === 'Offline';
     // precio_base × 1.10 (CPO) × 1.19 (IVA) × 1.03 (pasarela)
-  const priceUser  = (item.price_per_kwh_now ?? item.price_per_kwh) ? Math.round((item.price_per_kwh_now ?? item.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
+  const priceUser  = (item.price_per_kwh_now ?? item.price_per_kwh) ? Math.round((item.price_per_kwh_now ?? item.price_per_kwh) * 1.19) : null;
 
     return (
       <TouchableOpacity
@@ -1898,7 +1907,7 @@ export default function App() {
                       <Text style={styles.mapSearchItemId}>{c.id}</Text>
                       <Text style={styles.mapSearchItemLoc} numberOfLines={1}>{c.location}</Text>
                     </View>
-                    <Text style={styles.mapSearchItemPrice}>$ {Math.round((c.price_per_kwh_now ?? c.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03).toLocaleString('es-CO')}/kWh</Text>
+                    <Text style={styles.mapSearchItemPrice}>$ {Math.round((c.price_per_kwh_now ?? c.price_per_kwh ?? 0) * 1.19).toLocaleString('es-CO')}/kWh</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -1928,7 +1937,7 @@ export default function App() {
         const c        = chargers.find(x => x.id === selectedCharger.id) || selectedCharger;
         const color    = STATUS_COLOR[c.status] || T.offline;
         const mine     = isOwner && c.owner_id === user?.id;
-        const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
+        const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.19) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
         const myRes    = reservations.find(r => r.charger_id === c.id && r.status === 'active');
@@ -1966,7 +1975,7 @@ export default function App() {
             {priceUser && (
               <View style={styles.mapPanelPrice}>
                 <Text style={styles.mapPanelPriceVal}>$ {priceUser.toLocaleString('es-CO')} / kWh</Text>
-                <Text style={styles.mapPanelPriceNote}>IVA y pasarela incluidos</Text>
+                <Text style={styles.mapPanelPriceNote}>IVA incluido</Text>
               </View>
             )}
             <TouchableOpacity
@@ -2118,7 +2127,7 @@ export default function App() {
         const c        = chargers.find(x => x.id === chargerPanel.id) || chargerPanel;
         const color    = STATUS_COLOR[c.status] || T.offline;
         const mine     = isOwner && c.owner_id === user?.id;
-        const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.10 * 1.19 * 1.03) : null;
+        const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.19) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
         const myRes    = reservations.find(r => r.charger_id === c.id && r.status === 'active');
@@ -2159,6 +2168,9 @@ export default function App() {
                 {distKm != null && (
                   <View style={styles.specChip}><Text style={styles.specText}>a {formatDistance(distKm)}</Text></View>
                 )}
+                {c.rating_total > 0 && (
+                  <View style={styles.specChip}><Text style={styles.specText}>👍 {c.rating_pct}% ({c.rating_total})</Text></View>
+                )}
               </View>
 
               {/* Precio */}
@@ -2166,7 +2178,7 @@ export default function App() {
                 <View style={styles.mapPanelPrice}>
                   <View>
                     <Text style={styles.mapPanelPriceVal}>$ {priceUser.toLocaleString('es-CO')} / kWh</Text>
-                    <Text style={styles.mapPanelPriceNote}>IVA y pasarela incluidos · {c.owner}</Text>
+                    <Text style={styles.mapPanelPriceNote}>IVA incluido · {c.owner}</Text>
                   </View>
                 </View>
               )}
@@ -2743,6 +2755,29 @@ export default function App() {
               </View>
             ))}
 
+            {/* Calificación discreta del servicio */}
+            <View style={{ marginTop: 18, alignItems: 'center' }}>
+              <Text style={{ color: T.textMuted, fontSize: 12, marginBottom: 10 }}>¿Cómo estuvo el servicio?</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => rateSession(sessionDetail.id, true)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12,
+                    borderWidth: 1.5, borderColor: sessionDetail.my_rating === true ? T.green : T.cardBorder,
+                    backgroundColor: sessionDetail.my_rating === true ? T.greenFaint : T.surface }}>
+                  <Feather name="thumbs-up" size={18} color={sessionDetail.my_rating === true ? T.green : T.textMuted} />
+                  <Text style={{ color: sessionDetail.my_rating === true ? T.green : T.textMuted, fontWeight: '700', fontSize: 13 }}>Bien</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => rateSession(sessionDetail.id, false)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12,
+                    borderWidth: 1.5, borderColor: sessionDetail.my_rating === false ? T.dangerText : T.cardBorder,
+                    backgroundColor: sessionDetail.my_rating === false ? '#fbe7e7' : T.surface }}>
+                  <Feather name="thumbs-down" size={18} color={sessionDetail.my_rating === false ? T.dangerText : T.textMuted} />
+                  <Text style={{ color: sessionDetail.my_rating === false ? T.dangerText : T.textMuted, fontWeight: '700', fontSize: 13 }}>Mal</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 16 }]} onPress={() => setSessionDetail(null)}>
               <Text style={[styles.btnText, { color: T.textMuted }]}>Cerrar</Text>
             </TouchableOpacity>
@@ -2800,7 +2835,7 @@ export default function App() {
               <Text style={{ color: T.textMuted, fontSize: 13 }}>{confirmPayModal.charger.location}</Text>
               {confirmPayModal.charger.price_per_kwh && (
                 <Text style={{ color: T.textSec, fontSize: 12, marginTop: 4 }}>
-                  $ {Math.round(confirmPayModal.charger.price_per_kwh * 1.10 * 1.19 * 1.03).toLocaleString('es-CO')} / kWh · {confirmPayModal.charger.power_kw} kW
+                  $ {Math.round(confirmPayModal.charger.price_per_kwh * 1.19).toLocaleString('es-CO')} / kWh · {confirmPayModal.charger.power_kw} kW
                 </Text>
               )}
             </View>

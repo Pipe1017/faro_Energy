@@ -76,28 +76,26 @@ SEED_DEMO_USERS = os.getenv("SEED_DEMO_USERS", "true").lower() == "true"
 SEED_PASSWORD   = os.getenv("SEED_PASSWORD", "1234")
 
 SEED_OWNERS = [
-    {"email": "admin@cpo.com",      "name": "Admin CPO",   "role": "admin"},
-    {"email": "carlos@cpo.com",     "name": "Carlos",      "role": "owner"},
-    {"email": "juanes@cpo.com",     "name": "Juanes",      "role": "owner"},
-    {"email": "conductor1@cpo.com", "name": "Conductor 1", "role": "conductor"},
-    {"email": "conductor2@cpo.com", "name": "Conductor 2", "role": "conductor"},
+    {"email": "1017felipe@gmail.com",  "name": "felipe_Cargadores", "role": "owner"},
+    {"email": "felip_1017@outlook.com", "name": "Felipe_Conductor",  "role": "conductor"},
 ] if SEED_DEMO_USERS else []
-# Configuración inicial: 10 cargadores en Medellín (5 Carlos, 5 Juanes).
+# El admin (faro.energy.26@gmail.com) se crea por ADMIN_EMAIL, no aquí.
+# 10 cargadores en Medellín, todos del dueño felipe_Cargadores.
 # Se siembran al arrancar si no existen (idempotente). Los simuladores
 # arrancan solos para cada uno. Precio en COP/kWh (base del dueño).
 SEED_CHARGERS = [
     # ── Carlos (5) ──
-    {"id": "FARO-MED-01", "owner": "carlos@cpo.com", "location": "CC El Tesoro, El Poblado", "lat": 6.1959, "lng": -75.5550, "power_kw": 50,  "connector": "CCS2",   "price": 1900, "cost": 750},
-    {"id": "FARO-MED-02", "owner": "carlos@cpo.com", "location": "CC Santafé, El Poblado",   "lat": 6.1976, "lng": -75.5736, "power_kw": 22,  "connector": "Type 2", "price": 1500, "cost": 700},
-    {"id": "FARO-MED-03", "owner": "carlos@cpo.com", "location": "Parque Lleras, El Poblado", "lat": 6.2092, "lng": -75.5680, "power_kw": 11,  "connector": "Type 2", "price": 1400, "cost": 680},
-    {"id": "FARO-MED-04", "owner": "carlos@cpo.com", "location": "Universidad de Antioquia",  "lat": 6.2675, "lng": -75.5686, "power_kw": 7.4, "connector": "Type 2", "price": 1300, "cost": 650},
-    {"id": "FARO-MED-05", "owner": "carlos@cpo.com", "location": "Estadio Atanasio Girardot", "lat": 6.2566, "lng": -75.5903, "power_kw": 150, "connector": "CCS2",   "price": 2000, "cost": 800},
+    {"id": "FARO-MED-01", "owner": "1017felipe@gmail.com", "location": "CC El Tesoro, El Poblado", "lat": 6.1959, "lng": -75.5550, "power_kw": 50,  "connector": "CCS2",   "price": 1900, "cost": 750},
+    {"id": "FARO-MED-02", "owner": "1017felipe@gmail.com", "location": "CC Santafé, El Poblado",   "lat": 6.1976, "lng": -75.5736, "power_kw": 22,  "connector": "Type 2", "price": 1500, "cost": 700},
+    {"id": "FARO-MED-03", "owner": "1017felipe@gmail.com", "location": "Parque Lleras, El Poblado", "lat": 6.2092, "lng": -75.5680, "power_kw": 11,  "connector": "Type 2", "price": 1400, "cost": 680},
+    {"id": "FARO-MED-04", "owner": "1017felipe@gmail.com", "location": "Universidad de Antioquia",  "lat": 6.2675, "lng": -75.5686, "power_kw": 7.4, "connector": "Type 2", "price": 1300, "cost": 650},
+    {"id": "FARO-MED-05", "owner": "1017felipe@gmail.com", "location": "Estadio Atanasio Girardot", "lat": 6.2566, "lng": -75.5903, "power_kw": 150, "connector": "CCS2",   "price": 2000, "cost": 800},
     # ── Juanes (5) ──
-    {"id": "FARO-MED-06", "owner": "juanes@cpo.com", "location": "CC Oviedo, El Poblado",     "lat": 6.1985, "lng": -75.5605, "power_kw": 50,  "connector": "CCS2",   "price": 1850, "cost": 740},
-    {"id": "FARO-MED-07", "owner": "juanes@cpo.com", "location": "CC Premium Plaza, Aguacatala","lat": 6.2245, "lng": -75.5760, "power_kw": 22,  "connector": "Type 2", "price": 1550, "cost": 710},
-    {"id": "FARO-MED-08", "owner": "juanes@cpo.com", "location": "CC Unicentro, Laureles",    "lat": 6.2447, "lng": -75.5920, "power_kw": 22,  "connector": "Type 2", "price": 1500, "cost": 700},
-    {"id": "FARO-MED-09", "owner": "juanes@cpo.com", "location": "Aeropuerto Olaya Herrera",  "lat": 6.2197, "lng": -75.5905, "power_kw": 11,  "connector": "Type 2", "price": 1450, "cost": 690},
-    {"id": "FARO-MED-10", "owner": "juanes@cpo.com", "location": "CC Los Molinos, Belén",     "lat": 6.2308, "lng": -75.6044, "power_kw": 150, "connector": "CCS2",   "price": 1950, "cost": 790},
+    {"id": "FARO-MED-06", "owner": "1017felipe@gmail.com", "location": "CC Oviedo, El Poblado",     "lat": 6.1985, "lng": -75.5605, "power_kw": 50,  "connector": "CCS2",   "price": 1850, "cost": 740},
+    {"id": "FARO-MED-07", "owner": "1017felipe@gmail.com", "location": "CC Premium Plaza, Aguacatala","lat": 6.2245, "lng": -75.5760, "power_kw": 22,  "connector": "Type 2", "price": 1550, "cost": 710},
+    {"id": "FARO-MED-08", "owner": "1017felipe@gmail.com", "location": "CC Unicentro, Laureles",    "lat": 6.2447, "lng": -75.5920, "power_kw": 22,  "connector": "Type 2", "price": 1500, "cost": 700},
+    {"id": "FARO-MED-09", "owner": "1017felipe@gmail.com", "location": "Aeropuerto Olaya Herrera",  "lat": 6.2197, "lng": -75.5905, "power_kw": 11,  "connector": "Type 2", "price": 1450, "cost": 690},
+    {"id": "FARO-MED-10", "owner": "1017felipe@gmail.com", "location": "CC Los Molinos, Belén",     "lat": 6.2308, "lng": -75.6044, "power_kw": 150, "connector": "CCS2",   "price": 1950, "cost": 790},
 ]
 
 # Perfiles de marca — cada uno en su archivo brand_profiles/<id>.json.
