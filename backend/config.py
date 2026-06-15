@@ -27,6 +27,10 @@ GATEWAY_BORNE_BY = os.getenv("GATEWAY_BORNE_BY", "owner").lower()
 # inerte (no se cobra ni se factura). Se debita del saldo del dueño cada mes.
 SUBSCRIPTION_COP = int(os.getenv("SUBSCRIPTION_COP", "0"))
 
+# Exigir correo verificado para iniciar sesión. Los usuarios sembrados y el admin
+# se crean ya verificados, así que esto solo afecta a registros nuevos sin confirmar.
+REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() == "true"
+
 MIN_WITHDRAW_COP        = 1_000    # retiro manual mínimo del dueño
 SETTLEMENT_DAYS         = (5, 20)  # días de corte: giro automático (siguiente día hábil Colombia)
 SETTLE_CHECK_INTERVAL   = 3600     # el job revisa cada hora si hoy es día de giro

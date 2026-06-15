@@ -13,7 +13,9 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction, mask_email
+from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction,
+                    PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
+                    Reservation, mask_email)
 from auth import get_current_user
 from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA
 from engine import _faro_balance_cents
@@ -153,6 +155,83 @@ async def list_owners(_: User = Depends(require_admin), db: AsyncSession = Depen
         })
     out.sort(key=lambda x: x["balance_cop"], reverse=True)
     return out
+
+
+# ── Usuarios ──────────────────────────────────────────────────────────────────
+
+async def _user_footprint(db: AsyncSession, user_id: str) -> dict:
+    """Cuenta referencias financieras/operativas de un usuario (para borrar seguro)."""
+    async def n(model, col):
+        r = await db.execute(select(func.count()).select_from(model).where(col == user_id))
+        return int(r.scalar() or 0)
+    return {
+        "chargers":      await n(Charger, Charger.owner_id),
+        "transactions":  await n(PaymentTransaction, PaymentTransaction.user_id),
+        "disbursements": await n(DisbursementRecord, DisbursementRecord.owner_id),
+        "ledger":        await n(LedgerEntry, LedgerEntry.owner_id),
+    }
+
+
+@router.get("/users")
+async def list_users(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Todos los usuarios con su estado de verificación (para auditar y limpiar)."""
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    out = []
+    for u in result.scalars().all():
+        out.append({
+            "id": u.id, "name": u.name, "email": u.email, "role": u.role,
+            "email_verified": u.email_verified,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+    return out
+
+
+async def _delete_user_clean(db: AsyncSession, u: User):
+    """Borra un usuario y sus filas hijas NO financieras (tarjetas, cuenta de
+    dispersión, eventos, reservas). Asume que ya se verificó que no tiene huella."""
+    from sqlalchemy import delete as _del
+    await db.execute(_del(PaymentMethod).where(PaymentMethod.user_id == u.id))
+    await db.execute(_del(DisbursementAccount).where(DisbursementAccount.user_id == u.id))
+    await db.execute(_del(OwnerEvent).where(OwnerEvent.owner_id == u.id))
+    await db.execute(_del(Reservation).where(Reservation.user_id == u.id))
+    await db.delete(u)
+
+
+@router.post("/users/cleanup-unverified")
+async def cleanup_unverified(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Borra los usuarios SIN correo verificado, excepto admins y los que tengan
+    huella financiera (cargadores, cobros, ledger, dispersiones) — esos se reportan
+    como omitidos para revisión manual."""
+    result = await db.execute(
+        select(User).where(User.email_verified.is_(False), User.role != "admin")
+    )
+    candidates = result.scalars().all()
+    deleted, skipped = [], []
+    for u in candidates:
+        fp = await _user_footprint(db, u.id)
+        if any(fp.values()):
+            skipped.append({"email": u.email, "reason": "tiene actividad", "footprint": fp})
+            continue
+        await _delete_user_clean(db, u)
+        deleted.append(u.email)
+    await db.commit()
+    return {"deleted_count": len(deleted), "deleted": deleted, "skipped": skipped}
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Borra un usuario puntual (no admin, sin huella financiera)."""
+    u = await db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    if u.role == "admin":
+        raise HTTPException(400, "No se puede borrar un administrador")
+    fp = await _user_footprint(db, u.id)
+    if any(fp.values()):
+        raise HTTPException(400, f"El usuario tiene actividad y no se puede borrar: {fp}")
+    await _delete_user_clean(db, u)
+    await db.commit()
+    return {"ok": True, "deleted": u.email}
 
 
 @router.get("/invoices")

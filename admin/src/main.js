@@ -9,7 +9,7 @@ const TOKEN_KEY = 'faro_admin_token';
 
 const app = document.getElementById('app');
 let token = localStorage.getItem(TOKEN_KEY) || null;
-let state = { tab: 'resumen', overview: null, invoices: [], owners: [], invFilter: '', chargersData: { chargers: [], counts: {} } };
+let state = { tab: 'resumen', overview: null, invoices: [], owners: [], users: [], invFilter: '', chargersData: { chargers: [], counts: {} } };
 
 // Estado del mapa (Leaflet) — vive fuera del re-render para no recrearlo en cada refresco
 let mapInstance = null, markersLayer = null, mapTimer = null;
@@ -85,7 +85,7 @@ function renderLogin(error = '') {
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function renderApp() {
   clearMap();  // al cambiar de pestaña, soltar el mapa anterior
-  const tabs = [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['duenos', 'Dueños']];
+  const tabs = [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['duenos', 'Dueños'], ['usuarios', 'Usuarios']];
   app.innerHTML = `
     <div class="shell">
       <aside class="side">
@@ -110,6 +110,7 @@ async function renderTab() {
     else if (state.tab === 'mapa') { state.chargersData = await api('/admin/chargers'); renderMapa(view); }
     else if (state.tab === 'facturas') { state.invoices = await api(`/admin/invoices${state.invFilter ? '?status=' + state.invFilter : ''}`); renderFacturas(view); }
     else if (state.tab === 'duenos') { state.owners = await api('/admin/owners'); renderDuenos(view); }
+    else if (state.tab === 'usuarios') { state.users = await api('/admin/users'); renderUsuarios(view); }
   } catch (err) {
     view.innerHTML = `<div class="error-box">${err.message}</div>`;
   }
@@ -292,6 +293,49 @@ function renderDuenos(view) {
           </tr>`).join('')}
       </tbody>
     </table>`;
+}
+
+// ── Usuarios ─────────────────────────────────────────────────────────────────
+function renderUsuarios(view) {
+  const users = state.users;
+  const unverified = users.filter((u) => !u.email_verified && u.role !== 'admin');
+  view.innerHTML = `
+    <h1>Usuarios</h1>
+    <div class="filters">
+      <span class="muted">${users.length} usuarios · ${unverified.length} sin verificar</span>
+      ${unverified.length ? `<button class="mini del" id="cleanup" style="margin-left:auto;">Limpiar no verificados (${unverified.length})</button>` : ''}
+    </div>
+    <table>
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Verificación</th><th>Creado</th><th></th></tr></thead>
+      <tbody>
+        ${users.map((u) => `
+          <tr>
+            <td>${u.name}</td>
+            <td class="muted">${u.email}</td>
+            <td>${u.role}${u.role === 'admin' ? ' <span class="badge muted">admin</span>' : ''}</td>
+            <td>${u.email_verified ? '<span class="badge ok">Verificado</span>' : '<span class="badge danger">Sin verificar</span>'}</td>
+            <td class="muted">${fmtTime(u.created_at)}</td>
+            <td>${(!u.email_verified && u.role !== 'admin') ? `<button class="mini del" data-del="${u.id}">Borrar</button>` : ''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  const cleanupBtn = document.getElementById('cleanup');
+  if (cleanupBtn) cleanupBtn.addEventListener('click', async () => {
+    if (!confirm(`¿Borrar ${unverified.length} usuario(s) sin verificar? Los que tengan actividad (cargadores, cobros) se conservan.`)) return;
+    cleanupBtn.disabled = true; cleanupBtn.textContent = 'Limpiando…';
+    try {
+      const res = await api('/admin/users/cleanup-unverified', { method: 'POST' });
+      alert(`Borrados: ${res.deleted_count}\nOmitidos (con actividad): ${res.skipped.length}`);
+      renderTab();
+    } catch (err) { alert(err.message); cleanupBtn.disabled = false; }
+  });
+  view.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('¿Borrar este usuario sin verificar?')) return;
+    b.disabled = true;
+    try { await api(`/admin/users/${b.dataset.del}`, { method: 'DELETE' }); renderTab(); }
+    catch (err) { alert(err.message); b.disabled = false; }
+  }));
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────

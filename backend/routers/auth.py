@@ -136,6 +136,15 @@ async def login(body: LoginBody, request: Request, db: AsyncSession = Depends(ge
         _login_attempts[key].append(_time.monotonic())
         raise HTTPException(401, "Credenciales incorrectas")
     _login_attempts.pop(key, None)   # login exitoso limpia el contador
+    # Sin correo verificado no se entra. Reenviamos el enlace para no dejar al
+    # usuario atascado (la clave ya fue correcta, así que no es fuga de info).
+    if REQUIRE_EMAIL_VERIFICATION and not user.email_verified:
+        if not user.email_verify_token:
+            user.email_verify_token = secrets.token_urlsafe(32)
+            await db.commit()
+        subject, html, text = emailer.verification_email(user.name, user.email_verify_token)
+        asyncio.create_task(emailer.send_email(user.email, subject, html, text))
+        raise HTTPException(403, "Confirma tu correo para entrar. Te reenviamos el enlace de verificación.")
     return {"token": create_token(user.id, user.role), "user": _user_dict(user)}
 
 

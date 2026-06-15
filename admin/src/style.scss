@@ -120,6 +120,7 @@ td.err { color: $danger; font-size: .8rem; max-width: 220px; }
   padding: .35rem .7rem; font-size: .8rem; font-weight: 600; cursor: pointer; text-decoration: none;
   &:hover { background: $cobre-dk; }
   &:disabled { opacity: .6; }
+  &.del { background: $danger; &:hover { background: #991b1b; } }
 }
 
 .error-box {
