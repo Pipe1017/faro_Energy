@@ -89,6 +89,11 @@ async def startup():
                 db.add(user)
                 await db.flush()
                 logger.info(f"Seed: usuario {user.email}")
+            elif not user.email_verified:
+                # Cuentas semilla creadas antes de existir email_verified: marcarlas
+                # verificadas para que no queden bloqueadas por la regla de login.
+                user.email_verified = True
+                logger.info(f"Seed: {user.email} marcado como verificado")
             owner_ids[o["email"]] = user.id
 
         for bp in SEED_BRAND_PROFILES:

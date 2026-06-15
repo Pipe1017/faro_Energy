@@ -315,7 +315,7 @@ function renderUsuarios(view) {
             <td>${u.role}${u.role === 'admin' ? ' <span class="badge muted">admin</span>' : ''}</td>
             <td>${u.email_verified ? '<span class="badge ok">Verificado</span>' : '<span class="badge danger">Sin verificar</span>'}</td>
             <td class="muted">${fmtTime(u.created_at)}</td>
-            <td>${(!u.email_verified && u.role !== 'admin') ? `<button class="mini del" data-del="${u.id}">Borrar</button>` : ''}</td>
+            <td>${!u.email_verified ? `<button class="mini" data-verify="${u.id}">Verificar</button> ${u.role !== 'admin' ? `<button class="mini del" data-del="${u.id}">Borrar</button>` : ''}` : ''}</td>
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -330,6 +330,11 @@ function renderUsuarios(view) {
       renderTab();
     } catch (err) { alert(err.message); cleanupBtn.disabled = false; }
   });
+  view.querySelectorAll('[data-verify]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = '…';
+    try { await api(`/admin/users/${b.dataset.verify}/verify`, { method: 'POST' }); renderTab(); }
+    catch (err) { alert(err.message); b.disabled = false; b.textContent = 'Verificar'; }
+  }));
   view.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('¿Borrar este usuario sin verificar?')) return;
     b.disabled = true;

@@ -218,6 +218,18 @@ async def cleanup_unverified(_: User = Depends(require_admin), db: AsyncSession 
     return {"deleted_count": len(deleted), "deleted": deleted, "skipped": skipped}
 
 
+@router.post("/users/{user_id}/verify")
+async def verify_user(user_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Marca un usuario como verificado a mano (p. ej. un dueño de confianza)."""
+    u = await db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    u.email_verified = True
+    u.email_verify_token = None
+    await db.commit()
+    return {"ok": True, "email": u.email, "email_verified": True}
+
+
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Borra un usuario puntual (no admin, sin huella financiera)."""
