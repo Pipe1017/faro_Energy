@@ -40,6 +40,12 @@ class RegisterBody(BaseModel):
 class LoginBody(BaseModel):
     email: str
     password: str
+    role: str | None = None   # desambigua si el correo tiene cuenta de conductor y de dueño
+
+
+class ResendBody(BaseModel):
+    email: str
+    role: str | None = None
 
 
 # Rate limit de login en memoria (suficiente para un solo worker):
@@ -72,21 +78,24 @@ async def register(body: RegisterBody, db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "role debe ser 'conductor' o 'owner'")
     if len(body.password) < 6:
         raise HTTPException(400, "La contraseña debe tener al menos 6 caracteres")
-    if "@" not in body.email or "." not in body.email.split("@")[-1]:
+    email = body.email.lower().strip()
+    if "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(400, "Email inválido")
-    result = await db.execute(select(User).where(User.email == body.email))
+    # Único por (email, rol): permite una cuenta de conductor y otra de dueño con el mismo correo
+    result = await db.execute(select(User).where(User.email == email, User.role == body.role))
     if result.scalar_one_or_none():
-        raise HTTPException(400, "Email ya registrado")
+        rol = "conductor" if body.role == "conductor" else "dueño"
+        raise HTTPException(400, f"Ya existe una cuenta de {rol} con ese correo")
     token = secrets.token_urlsafe(32)
-    user = User(email=body.email.lower().strip(), name=body.name,
+    user = User(email=email, name=body.name,
                 password_hash=hash_password(body.password), role=body.role,
                 email_verified=False, email_verify_token=token)
     db.add(user)
     await db.commit()
-    # Enviar verificación sin bloquear la respuesta
+    # NO devolvemos token: el usuario debe CONFIRMAR su correo antes de poder entrar.
     subject, html, text = emailer.verification_email(user.name, token)
     asyncio.create_task(emailer.send_email(user.email, subject, html, text))
-    return {"token": create_token(user.id, user.role), "user": _user_dict(user)}
+    return {"needs_verification": True, "email": user.email, "role": user.role}
 
 
 @router.get("/auth/verify", response_class=HTMLResponse)
@@ -105,14 +114,21 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/auth/resend-verification")
-async def resend_verification(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if current_user.email_verified:
-        return {"ok": True, "already_verified": True}
-    current_user.email_verify_token = secrets.token_urlsafe(32)
+async def resend_verification(body: ResendBody, db: AsyncSession = Depends(get_db)):
+    """Público: reenvía el correo de verificación. Devuelve ok siempre (no revela
+    si el correo existe). Útil para el botón 'Reenviar' tras el registro."""
+    email = body.email.lower().strip()
+    q = select(User).where(User.email == email, User.email_verified.is_(False))
+    if body.role:
+        q = q.where(User.role == body.role)
+    users = (await db.execute(q)).scalars().all()
+    for user in users:
+        user.email_verify_token = secrets.token_urlsafe(32)
+        await db.flush()
+        subject, html, text = emailer.verification_email(user.name, user.email_verify_token)
+        asyncio.create_task(emailer.send_email(user.email, subject, html, text))
     await db.commit()
-    subject, html, text = emailer.verification_email(current_user.name, current_user.email_verify_token)
-    sent = await emailer.send_email(current_user.email, subject, html, text)
-    return {"ok": sent}
+    return {"ok": True}
 
 
 def _verify_page(title: str, msg: str) -> str:
@@ -130,8 +146,15 @@ display:grid;place-items:center;min-height:100vh;color:#2e2620;">
 async def login(body: LoginBody, request: Request, db: AsyncSession = Depends(get_db)):
     key = _login_rate_key(request, body.email)
     _check_login_rate(key)
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
+    email = body.email.lower().strip()
+    q = select(User).where(User.email == email)
+    if body.role:
+        q = q.where(User.role == body.role)
+    users = (await db.execute(q)).scalars().all()
+    if len(users) > 1:
+        # Mismo correo con cuenta de conductor y de dueño: la app debe mandar el rol
+        raise HTTPException(409, "Este correo tiene cuenta de conductor y de dueño. Indica con cuál entrar.")
+    user = users[0] if users else None
     if not user or not verify_password(body.password, user.password_hash):
         _login_attempts[key].append(_time.monotonic())
         raise HTTPException(401, "Credenciales incorrectas")

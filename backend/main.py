@@ -67,6 +67,9 @@ async def startup():
         ("ALTER TABLE users ADD COLUMN email_verify_token TEXT",                                     "email_verify_token en users"),
         ("ALTER TABLE chargers ADD COLUMN rating_up INTEGER DEFAULT 0",                              "rating_up en chargers"),
         ("ALTER TABLE chargers ADD COLUMN rating_down INTEGER DEFAULT 0",                            "rating_down en chargers"),
+        # Email único por (email, rol): quitar el único global y crear el compuesto
+        ("DROP INDEX IF EXISTS ix_users_email",                                                      "drop índice único global de email"),
+        ("CREATE UNIQUE INDEX IF NOT EXISTS uq_user_email_role ON users (email, role)",              "índice único (email, role)"),
     ]:
         try:
             async with engine.begin() as conn:

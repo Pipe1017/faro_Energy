@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from sqlalchemy import String, Float, DateTime, Integer, ForeignKey, Boolean, Text
+from sqlalchemy import String, Float, DateTime, Integer, ForeignKey, Boolean, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 from config import RESERVE_CONVENIENCE_COP
@@ -26,9 +26,12 @@ def mask_email(email: str | None) -> str | None:
 
 class User(Base):
     __tablename__ = "users"
+    # Único por (email, rol): un correo puede tener UNA cuenta de conductor y UNA
+    # de dueño, pero no dos del mismo rol.
+    __table_args__ = (UniqueConstraint("email", "role", name="uq_user_email_role"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
-    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String)   # el índice único (email, role) cubre las búsquedas
     name: Mapped[str] = mapped_column(String)
     password_hash: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String)  # "conductor" | "owner"
