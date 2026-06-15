@@ -16,6 +16,15 @@ def new_uuid() -> str:
     return str(uuid.uuid4())
 
 
+import secrets as _secrets
+# Alfabeto sin confusables (sin 0/O/1/I/L). El idTag OCPP cabe en 20 chars; usamos 10.
+_TAG_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+def new_tag(n: int = 10) -> str:
+    """Identificador corto y único del usuario para usar como idTag de OCPP."""
+    return "".join(_secrets.choice(_TAG_ALPHABET) for _ in range(n))
+
+
 def mask_email(email: str | None) -> str | None:
     """conductor1@cpo.com → c***@cpo.com — /status es público, el email no."""
     if not email or "@" not in email:
@@ -35,6 +44,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String)
     password_hash: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String)  # "conductor" | "owner"
+    tag: Mapped[str | None] = mapped_column(String, unique=True, index=True, default=new_tag)  # idTag OCPP (corto, único)
     # Datos fiscales del dueño (para facturación por mandato y para decidir si la
     # recarga lleva IVA). responsable_iva=True por defecto: la mayoría de comercios
     # lo son; el onboarding lo confirma.

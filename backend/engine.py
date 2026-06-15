@@ -130,11 +130,11 @@ class ChargePoint(cp):
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, self.id)
             if charger:
-                # El idTag de OCPP tiene tope de 20 chars, así que mandamos el prefijo
-                # del id del usuario; aquí lo resolvemos de vuelta a su email para el
-                # emparejamiento de sesiones (cae al id_tag tal cual si no lo encuentra).
+                # El idTag de OCPP es el `tag` corto del usuario; lo resolvemos de
+                # vuelta a su email para el emparejamiento de sesiones (cae al id_tag
+                # tal cual si no lo encuentra, p. ej. una tarjeta RFID física).
                 session_user = id_tag
-                u = (await db.execute(select(User).where(User.id.like(f"{id_tag}%")).limit(1))).scalar_one_or_none()
+                u = (await db.execute(select(User).where(User.tag == id_tag).limit(1))).scalar_one_or_none()
                 if u:
                     session_user = u.email
                 charger.status = "Charging"

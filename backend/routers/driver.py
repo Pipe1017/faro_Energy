@@ -365,7 +365,7 @@ async def initiate_payment(
     if status == "APPROVED":
         charger_conn = connected_chargers.get(body.charger_id)
         if charger_conn:
-            await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.id[:20]))
+            await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.tag))
         # Si venía de una separación: cúmplela (captura la cuota fija, libera el resto)
         await fulfill_reservation_if_any(db, current_user.id, body.charger_id)
         await db.commit()
@@ -404,7 +404,7 @@ async def payment_status(reference: str, current_user: User = Depends(get_curren
             payment.status = "APPROVED"
             charger_conn = connected_chargers.get(payment.charger_id)
             if charger_conn:
-                await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.id[:20]))
+                await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.tag))
             await fulfill_reservation_if_any(db, current_user.id, payment.charger_id)
             await db.commit()
             logger.info(f"Pre-auth confirmada — sesión iniciada en {payment.charger_id} para {current_user.email}")

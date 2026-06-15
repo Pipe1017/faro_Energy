@@ -11,7 +11,7 @@ from sqlalchemy import select
 from dotenv import load_dotenv
 
 from database import engine, AsyncSessionLocal, Base
-from models import User, Charger, ChargerBrandProfile
+from models import User, Charger, ChargerBrandProfile, new_tag
 from auth import hash_password, verify_password
 import sim as sim_mgr
 from config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
@@ -70,6 +70,8 @@ async def startup():
         # Email único por (email, rol): quitar el único global y crear el compuesto
         ("DROP INDEX IF EXISTS ix_users_email",                                                      "drop índice único global de email"),
         ("CREATE UNIQUE INDEX IF NOT EXISTS uq_user_email_role ON users (email, role)",              "índice único (email, role)"),
+        ("ALTER TABLE users ADD COLUMN tag TEXT",                                                     "tag (idTag OCPP) en users"),
+        ("CREATE UNIQUE INDEX IF NOT EXISTS uq_user_tag ON users (tag)",                              "índice único de tag"),
     ]:
         try:
             async with engine.begin() as conn:
@@ -155,6 +157,12 @@ async def startup():
                 logger.info(f"Admin: creado administrador de Faro {admin_email}")
             else:
                 logger.warning(f"ADMIN_EMAIL={admin_email} no existe y falta ADMIN_PASSWORD para crearlo")
+
+        # Backfill: usuarios creados antes de la columna `tag` → asignar uno único
+        result = await db.execute(select(User).where(User.tag.is_(None)))
+        for u in result.scalars().all():
+            u.tag = new_tag()
+            logger.info(f"Backfill: tag asignado a {u.email}")
 
         await db.commit()
 
