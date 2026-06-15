@@ -4,7 +4,9 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+import emailer
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,10 +77,53 @@ async def register(body: RegisterBody, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(400, "Email ya registrado")
-    user = User(email=body.email.lower().strip(), name=body.name, password_hash=hash_password(body.password), role=body.role)
+    token = secrets.token_urlsafe(32)
+    user = User(email=body.email.lower().strip(), name=body.name,
+                password_hash=hash_password(body.password), role=body.role,
+                email_verified=False, email_verify_token=token)
     db.add(user)
     await db.commit()
+    # Enviar verificación sin bloquear la respuesta
+    subject, html, text = emailer.verification_email(user.name, token)
+    asyncio.create_task(emailer.send_email(user.email, subject, html, text))
     return {"token": create_token(user.id, user.role), "user": _user_dict(user)}
+
+
+@router.get("/auth/verify", response_class=HTMLResponse)
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+    """Abierto desde el link del correo. Marca el email como verificado."""
+    result = await db.execute(select(User).where(User.email_verify_token == token))
+    user = result.scalar_one_or_none()
+    if not user:
+        return HTMLResponse(_verify_page("Enlace inválido o ya usado",
+                            "Pide un nuevo correo de verificación desde la app."), status_code=400)
+    user.email_verified = True
+    user.email_verify_token = None
+    await db.commit()
+    return HTMLResponse(_verify_page("¡Correo confirmado!",
+                        f"Listo {user.name}, ya puedes usar Faro Energy."))
+
+
+@router.post("/auth/resend-verification")
+async def resend_verification(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if current_user.email_verified:
+        return {"ok": True, "already_verified": True}
+    current_user.email_verify_token = secrets.token_urlsafe(32)
+    await db.commit()
+    subject, html, text = emailer.verification_email(current_user.name, current_user.email_verify_token)
+    sent = await emailer.send_email(current_user.email, subject, html, text)
+    return {"ok": sent}
+
+
+def _verify_page(title: str, msg: str) -> str:
+    return f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title></head>
+<body style="margin:0;background:#fdfbf7;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+display:grid;place-items:center;min-height:100vh;color:#2e2620;">
+<div style="background:#fff;border:1px solid #ece5dc;border-radius:16px;padding:36px;max-width:380px;text-align:center;">
+<div style="font-size:24px;font-weight:800;">Faro <span style="color:#b45309;">Energy</span></div>
+<div style="font-size:19px;font-weight:700;margin:18px 0 8px;">{title}</div>
+<div style="color:#8a7d72;font-size:15px;line-height:1.5;">{msg}</div></div></body></html>"""
 
 
 @router.post("/auth/login")
@@ -100,5 +145,6 @@ async def me(current_user: User = Depends(get_current_user)):
 
 
 def _user_dict(user: User) -> dict:
-    return {"id": user.id, "name": user.name, "email": user.email, "role": user.role}
+    return {"id": user.id, "name": user.name, "email": user.email, "role": user.role,
+            "email_verified": user.email_verified}
 

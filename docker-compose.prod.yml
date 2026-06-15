@@ -15,18 +15,43 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-faro}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-faro_minio_pwd}
+    volumes:
+      - faro_minio:/data
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # consola web
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
       - db
+      - minio
     env_file:
       - ./backend/.env
     environment:
       # dentro de la red de compose, la DB se llama "db" (no localhost)
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@db:5432/cpo_db
+      # MinIO interno de la red de compose
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-faro}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-faro_minio_pwd}
+      MINIO_BUCKET: ${MINIO_BUCKET:-faro}
     ports:
       - "8000:8000"
 
 volumes:
   faro_pgdata:
+  faro_minio:

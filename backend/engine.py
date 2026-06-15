@@ -16,14 +16,16 @@ from ocpp.v16.enums import Action, RegistrationStatus, AvailabilityType
 from database import AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, Invoice)
 import wompi as wompi_svc
+import emailer
 from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
                     CHARGE_MAX_ATTEMPTS, OFFLINE_SESSION_TIMEOUT, MIN_WITHDRAW_COP,
                     SETTLEMENT_DAYS, SETTLE_CHECK_INTERVAL, BOGOTA, _PERIOD_HOURS,
                     RESERVE_MINUTES, RESERVE_GRACE_MINUTES, RESERVE_FEE_FACTOR,
                     RESERVE_FEE_MIN_COP, RESERVE_FEE_CAP_COP, RESERVE_CONVENIENCE_COP,
-                    RESERVE_CHECK_INTERVAL)
+                    RESERVE_CHECK_INTERVAL,
+                    ACCT_FARO_REVENUE, ACCT_FARO_IVA, GATEWAY_BORNE_BY, SUBSCRIPTION_COP)
 from state import connected_chargers
 
 logger = logging.getLogger(__name__)
@@ -177,29 +179,71 @@ class ChargePoint(cp):
 
 # ── CIERRE DE SESIÓN Y COBRO (outbox) ─────────────────────────────────────────
 
+# Tipos de alerta que ademas se envian por correo (los de alta señal; los
+# frecuentes como SESSION_STARTED/COMPLETED quedan solo in-app para no spamear).
+EMAIL_ALERT_TYPES = {"CHARGER_OFFLINE", "SETTLEMENT_SENT", "PAYMENT_UNPAID"}
+EMAIL_ALERT_TITLES = {
+    "CHARGER_OFFLINE": "Tu cargador está fuera de línea",
+    "SETTLEMENT_SENT": "Te enviamos tu liquidación",
+    "PAYMENT_UNPAID":  "Un cobro quedó pendiente",
+}
+
+
+async def _email_owner(owner_id: str, type_: str, message: str):
+    """Envía por correo una alerta del dueño (sesión propia, nunca lanza)."""
+    try:
+        async with AsyncSessionLocal() as db:
+            owner = await db.get(User, owner_id)
+        if not owner or not owner.email:
+            return
+        title = EMAIL_ALERT_TITLES.get(type_, "Notificación de Faro Energy")
+        subject, html, text = emailer.owner_alert_email(owner.name, title, message)
+        await emailer.send_email(owner.email, subject, html, text)
+    except Exception as e:
+        logger.warning(f"email alerta dueño: {e}")
+
+
 def _notify_owner(db: AsyncSession, owner_id: str | None, type_: str, message: str, charger_id: str | None = None):
-    """Registra una alerta para el dueño (centro de alertas in-app)."""
+    """Registra una alerta para el dueño (centro de alertas in-app) y, para los
+    tipos de alta señal, ademas la envia por correo en segundo plano."""
     if owner_id:
         db.add(OwnerEvent(owner_id=owner_id, type=type_, message=message, charger_id=charger_id))
+        if type_ in EMAIL_ALERT_TYPES:
+            try:
+                asyncio.create_task(_email_owner(owner_id, type_, message))
+            except RuntimeError:
+                pass  # sin event loop (p. ej. en tests síncronos)
 
 
-def session_money(kwh: float, charger: Charger, started_at: datetime | None = None) -> dict:
-    """Montos en COP enteros: el total es la suma exacta de sus partes
-    para que cobrado = dueño + comisión + IVA + pasarela cuadre siempre.
-    El precio base depende de la franja horaria al INICIO de la sesión."""
-    price_base = charger.price_at(started_at)
-    cost_base  = charger.cost_per_kwh or 0
-    revenue    = round(kwh * price_base)
-    commission = round(revenue * PLATFORM_MARGIN)
-    subtotal   = revenue + commission
-    iva        = round(subtotal * IVA_RATE)
-    gateway    = round((subtotal + iva) * GATEWAY_FEE)
-    total      = subtotal + iva + gateway
-    elec_cost  = round(kwh * cost_base)
+def session_money(kwh: float, charger: Charger, started_at: datetime | None = None,
+                  responsable_iva: bool = True) -> dict:
+    """Montos en COP enteros (Modelo A — comisionista / "bolsas").
+
+    El conductor paga SOLO la recarga + IVA (sin markup):
+        total = revenue + recarga_iva
+    La comisión, su IVA y la pasarela NO se le suman al conductor: se DEBITAN del
+    saldo del dueño al liquidar (ver _settle_captured). Por eso:
+        neto_dueño = total − commission − commission_iva − gateway(si lo asume el dueño)
+    El precio base depende de la franja horaria al INICIO de la sesión. Si el dueño
+    no es responsable de IVA, la recarga no lleva IVA."""
+    price_base     = charger.price_at(started_at)
+    cost_base      = charger.cost_per_kwh or 0
+    revenue        = round(kwh * price_base)                          # venta de energía del dueño (base)
+    recarga_iva    = round(revenue * IVA_RATE) if responsable_iva else 0
+    total          = revenue + recarga_iva                            # lo que paga el conductor
+    commission     = round(revenue * PLATFORM_MARGIN)                 # comisión Faro (cargada al dueño)
+    commission_iva = round(commission * IVA_RATE)                     # Faro siempre es responsable de IVA
+    gateway        = round(total * GATEWAY_FEE)                       # pasarela sobre lo recaudado
+    gateway_owner  = gateway if GATEWAY_BORNE_BY == "owner" else 0
+    elec_cost      = round(kwh * cost_base)
+    net_owner      = total - commission - commission_iva - gateway_owner
     return {
-        "revenue": revenue, "commission": commission, "iva": iva,
-        "gateway": gateway, "total": total, "elec_cost": elec_cost,
-        "net_profit": revenue - elec_cost,
+        "revenue": revenue, "recarga_iva": recarga_iva, "total": total,
+        "commission": commission, "commission_iva": commission_iva,
+        "gateway": gateway, "gateway_owner": gateway_owner,
+        "elec_cost": elec_cost, "net_owner": net_owner,
+        # compat: campos que ya consumían modelos/UI
+        "iva": recarga_iva, "net_profit": revenue - elec_cost,
     }
 
 
@@ -212,7 +256,9 @@ async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, fina
     de sesiones huérfanas.
     """
     kwh = max(0.0, kwh)
-    m = session_money(kwh, charger, charger.session_started_at)
+    owner = await db.get(User, charger.owner_id) if charger.owner_id else None
+    responsable_iva = owner.responsable_iva if owner else True
+    m = session_money(kwh, charger, charger.session_started_at, responsable_iva)
     session = Session(
         charger_id=charger.id,
         session_user=charger.session_user,
@@ -255,6 +301,16 @@ async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, fina
     else:
         logger.warning(f"[{charger.id}] Sin pago autorizado — sesión #{session.id} queda sin cobro")
 
+    # Recibo por correo al conductor (si su identificador es un email)
+    conductor = charger.session_user or ""
+    if "@" in conductor:
+        subject, html, text = emailer.receipt_email(
+            conductor.split("@")[0], charger.location, kwh, int(m["total"]))
+        try:
+            asyncio.create_task(emailer.send_email(conductor, subject, html, text))
+        except RuntimeError:
+            pass
+
     _notify_owner(
         db, charger.owner_id, "SESSION_COMPLETED",
         f"{charger.id}: sesión de {kwh:.2f} kWh terminada — ganancia ${m['revenue']:,} COP",
@@ -273,9 +329,22 @@ async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, fina
 
 
 async def _settle_captured(db: AsyncSession, pc: PendingCharge, pay_tx: PaymentTransaction):
-    """Cobro confirmado: marca CAPTURED y abona la ganancia al ledger del dueño.
-    La plata sale hacia su cuenta solo en la liquidación (retiro manual o job
-    automático) — nunca antes de confirmar que el conductor pagó."""
+    """Cobro confirmado: marca CAPTURED y reparte la plata en BOLSAS (Modelo A).
+
+    Lo que pagó el conductor (total = recarga + IVA) es 100% del dueño en custodia.
+    De su saldo se DEBITAN la comisión de Faro (+ su IVA) y la pasarela (si la
+    asume el dueño). Asientos por sesión:
+
+      Bolsa del dueño (owner_id, account=NULL):
+        + total            (EARNING)        ← lo recaudado del conductor
+        − comisión+IVA     (COMMISSION)     ← lo que cobra Faro
+        − pasarela         (GATEWAY)        ← si GATEWAY_BORNE_BY == "owner"
+      Bolsa de Faro (owner_id=NULL):
+        + comisión         (COMMISSION_INCOME, account=revenue:faro)
+        + IVA comisión     (IVA_COLLECTED,     account=tax:iva)
+
+    La plata sale hacia el dueño solo en la liquidación. Idempotente: si el worker
+    reintenta, el guard por EARNING evita duplicar el reparto."""
     pc.status = "DONE"
     pay_tx.status = "CAPTURED"
     logger.info(f"✓ Cobro sesión #{pc.session_id}: ${pay_tx.amount_cents // 100:,} COP CAPTURED")
@@ -285,11 +354,11 @@ async def _settle_captured(db: AsyncSession, pc: PendingCharge, pay_tx: PaymentT
         return
     charger = await db.get(Charger, session.charger_id)
     owner_id = charger.owner_id if charger else None
-    revenue = int(session.revenue_owner)
-    if not owner_id or revenue <= 0:
+    total = int(round(session.total_charged))
+    if not owner_id or total <= 0:
         return
 
-    # Evitar abono duplicado si el worker reintenta
+    # Evitar reparto duplicado si el worker reintenta
     existing = await db.execute(
         select(LedgerEntry)
         .where(LedgerEntry.session_id == session.id, LedgerEntry.type == "EARNING")
@@ -298,14 +367,97 @@ async def _settle_captured(db: AsyncSession, pc: PendingCharge, pay_tx: PaymentT
     if existing.scalars().first():
         return
 
-    db.add(LedgerEntry(
-        owner_id=owner_id,
-        session_id=session.id,
-        type="EARNING",
-        amount_cents=revenue * 100,
-        description=f"Ganancia sesión #{session.id} — {session.charger_id}",
-    ))
-    logger.info(f"[{session.charger_id}] Ledger: +${revenue:,} COP para dueño {owner_id[:8]} (sesión #{session.id})")
+    commission     = int(round(session.commission_cpo))
+    commission_iva = int(round(commission * IVA_RATE))
+    gateway        = int(round(session.gateway_fee))
+    gateway_owner  = gateway if GATEWAY_BORNE_BY == "owner" else 0
+    tag = f"sesión #{session.id} — {session.charger_id}"
+
+    # ── Bolsa del dueño ──
+    db.add(LedgerEntry(owner_id=owner_id, session_id=session.id, type="EARNING",
+                       amount_cents=total * 100, description=f"Recarga cobrada — {tag}"))
+    if commission + commission_iva > 0:
+        db.add(LedgerEntry(owner_id=owner_id, session_id=session.id, type="COMMISSION",
+                           amount_cents=-(commission + commission_iva) * 100,
+                           description=f"Comisión Faro 10% + IVA — {tag}"))
+    if gateway_owner > 0:
+        db.add(LedgerEntry(owner_id=owner_id, session_id=session.id, type="GATEWAY",
+                           amount_cents=-gateway_owner * 100, description=f"Pasarela — {tag}"))
+
+    # ── Bolsas de Faro ──
+    if commission > 0:
+        db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_REVENUE, session_id=session.id,
+                           type="COMMISSION_INCOME", amount_cents=commission * 100,
+                           description=f"Comisión — {tag}"))
+    if commission_iva > 0:
+        db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_IVA, session_id=session.id,
+                           type="IVA_COLLECTED", amount_cents=commission_iva * 100,
+                           description=f"IVA comisión — {tag}"))
+
+    net_owner = total - commission - commission_iva - gateway_owner
+    logger.info(f"[{session.charger_id}] Bolsas s#{session.id}: dueño +${net_owner:,} "
+                f"(recaudo ${total:,} − com ${commission + commission_iva:,} − pasarela ${gateway_owner:,}) "
+                f"· Faro +${commission:,} · IVA ${commission_iva:,}")
+
+    # Factura electrónica (por mandato la recarga; comisión la factura Faro) — outbox
+    await _enqueue_session_invoices(db, session, owner_id, total, commission, commission_iva)
+
+
+# ── FACTURACIÓN ELECTRÓNICA (outbox) ─────────────────────────────────────────
+
+async def _enqueue_session_invoices(db: AsyncSession, session: Session, owner_id: str,
+                                    total: int, commission: int, commission_iva: int):
+    """Crea las facturas PENDING de una sesión (no emite — eso lo hace el worker).
+    Idempotente: no duplica si ya existen para la sesión."""
+    existing = await db.execute(
+        select(Invoice.kind).where(Invoice.session_id == session.id)
+    )
+    have = {row[0] for row in existing.all()}
+
+    recarga_iva = int(round(session.iva_amount))
+    recarga_base = total - recarga_iva
+    if "RECARGA" not in have and recarga_base > 0:
+        db.add(Invoice(
+            kind="RECARGA", session_id=session.id,
+            issuer=f"owner:{owner_id}", owner_id=owner_id,   # por mandato, a nombre del dueño
+            amount_cents=recarga_base * 100, iva_cents=recarga_iva * 100, total_cents=total * 100,
+        ))
+    if "COMMISSION" not in have and commission > 0:
+        db.add(Invoice(
+            kind="COMMISSION", session_id=session.id,
+            issuer="faro", owner_id=owner_id, recipient_user_id=owner_id,
+            amount_cents=commission * 100, iva_cents=commission_iva * 100,
+            total_cents=(commission + commission_iva) * 100,
+        ))
+
+
+async def _invoice_worker():
+    """Emite las facturas PENDING contra el proveedor (stub o real) y guarda el
+    PDF/XML en MinIO. Reintentos con backoff implícito (cada ciclo). Que una
+    factura falle NO afecta la plata: el reparto en bolsas ya ocurrió."""
+    import invoicing
+    logger.info(f"Worker de facturación iniciado — proveedor: {invoicing.provider_name()}")
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                pend = await db.execute(
+                    select(Invoice).where(Invoice.status == "PENDING",
+                                          Invoice.attempts < 5).limit(20)
+                )
+                invoices = pend.scalars().all()
+                for inv in invoices:
+                    try:
+                        await invoicing.issue_invoice(db, inv)
+                    except Exception as e:
+                        inv.attempts += 1
+                        inv.last_error = str(e)[:480]
+                        if inv.attempts >= 5:
+                            inv.status = "FAILED"
+                        logger.warning(f"Factura {inv.id[:8]} ({inv.kind}) intento {inv.attempts}: {e}")
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"invoice_worker: {e}")
+        await asyncio.sleep(20)
 
 
 # ── LIQUIDACIÓN AL DUEÑO ─────────────────────────────────────────────────────
@@ -323,7 +475,16 @@ def _settle_lock(owner_id: str) -> asyncio.Lock:
 async def _owner_balance_cents(db: AsyncSession, owner_id: str) -> int:
     result = await db.execute(
         select(func.coalesce(func.sum(LedgerEntry.amount_cents), 0))
-        .where(LedgerEntry.owner_id == owner_id)
+        .where(LedgerEntry.owner_id == owner_id, LedgerEntry.account.is_(None))
+    )
+    return int(result.scalar() or 0)
+
+
+async def _faro_balance_cents(db: AsyncSession, account: str) -> int:
+    """Saldo de una bolsa de Faro (revenue:faro o tax:iva)."""
+    result = await db.execute(
+        select(func.coalesce(func.sum(LedgerEntry.amount_cents), 0))
+        .where(LedgerEntry.account == account)
     )
     return int(result.scalar() or 0)
 
@@ -460,6 +621,7 @@ async def _settlement_worker():
             async with AsyncSessionLocal() as db:
                 balances = await db.execute(
                     select(LedgerEntry.owner_id, func.sum(LedgerEntry.amount_cents))
+                    .where(LedgerEntry.owner_id.isnot(None), LedgerEntry.account.is_(None))
                     .group_by(LedgerEntry.owner_id)
                     .having(func.sum(LedgerEntry.amount_cents) >= MIN_WITHDRAW_COP * 100)
                 )
@@ -735,9 +897,10 @@ async def _mark_offline_after_grace(charge_point_id: str, grace: int = 10):
 
 
 def calc_preauth_cop(charger: Charger) -> int:
-    """Pre-auth basado en potencia del cargador (cubre 15 min + 20% buffer, mínimo $3.000 COP)."""
+    """Pre-auth basado en potencia del cargador (cubre 15 min + 20% buffer, mínimo $3.000 COP).
+    Modelo A: el conductor paga recarga + IVA (sin markup)."""
     power_kw   = charger.power_kw or 22.0
-    price_user = (charger.price_at() or 1000) * (1 + PLATFORM_MARGIN) * (1 + IVA_RATE) * (1 + GATEWAY_FEE)
+    price_user = (charger.price_at() or 1000) * (1 + IVA_RATE)
     max_kwh    = power_kw * 0.25           # 15 minutos
     estimated  = max_kwh * price_user * 1.2
     rounded    = max(3_000, int(estimated / 1000 + 1) * 1000)  # mínimo $3.000, múltiplos de $1.000

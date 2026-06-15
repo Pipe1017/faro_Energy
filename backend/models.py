@@ -32,6 +32,14 @@ class User(Base):
     name: Mapped[str] = mapped_column(String)
     password_hash: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String)  # "conductor" | "owner"
+    # Datos fiscales del dueño (para facturación por mandato y para decidir si la
+    # recarga lleva IVA). responsable_iva=True por defecto: la mayoría de comercios
+    # lo son; el onboarding lo confirma.
+    rut: Mapped[str | None] = mapped_column(String, nullable=True)
+    responsable_iva: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Verificación de correo (ingreso con correos reales)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_verify_token: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -388,21 +396,28 @@ class OwnerEvent(Base):
         }
 
 
-# ── Libro mayor del dueño (ledger) ────────────────────────────────────────────
-# Cada movimiento de plata del dueño queda registrado con monto FIRMADO:
-# EARNING (+) cuando el cobro de una sesión queda CAPTURED,
-# DISBURSEMENT (−) cuando se liquida el saldo hacia su cuenta.
-# Saldo disponible = SUM(amount_cents). La conciliación siempre cuadra.
+# ── Libro mayor / bolsas (ledger) ─────────────────────────────────────────────
+# Cada movimiento de plata queda registrado con monto FIRMADO. Hay dos clases
+# de bolsa (cuenta), según owner_id:
+#   • Bolsa del dueño (owner_id = su id, account NULL): es su saldo = lo que Faro
+#     le debe. EARNING (+ recarga cobrada), COMMISSION/GATEWAY/SUBSCRIPTION (−),
+#     DISBURSEMENT (− al liquidar). Saldo dueño = SUM(amount_cents WHERE owner_id).
+#   • Bolsa de Faro (owner_id NULL, account = "revenue:faro" | "tax:iva"):
+#     ingresos de la plataforma e IVA por girar a la DIAN.
+# La suma de todas las bolsas de una sesión = lo recaudado del conductor (cuadra).
 
 class LedgerEntry(Base):
     __tablename__ = "ledger_entries"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
-    owner_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
+    owner_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), index=True, nullable=True)
+    account: Mapped[str | None] = mapped_column(String, nullable=True, index=True)  # bolsa de Faro: "revenue:faro" | "tax:iva"
     session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=True)
     disbursement_id: Mapped[str | None] = mapped_column(String, ForeignKey("disbursement_records.id"), nullable=True)
-    type: Mapped[str] = mapped_column(String)            # EARNING | DISBURSEMENT | ADJUSTMENT
-    amount_cents: Mapped[int] = mapped_column(Integer)   # firmado: EARNING > 0, DISBURSEMENT < 0
+    # EARNING | COMMISSION | GATEWAY | SUBSCRIPTION | DISBURSEMENT | ADJUSTMENT
+    # | COMMISSION_INCOME | SUBSCRIPTION_INCOME | IVA_COLLECTED
+    type: Mapped[str] = mapped_column(String)
+    amount_cents: Mapped[int] = mapped_column(Integer)   # firmado: ingresos > 0, cargos/giros < 0
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -411,4 +426,44 @@ class LedgerEntry(Base):
             "id": self.id, "type": self.type, "amount_cop": self.amount_cents // 100,
             "session_id": self.session_id, "description": self.description,
             "created_at": self.created_at.isoformat(),
+        }
+
+
+# ── Factura electrónica ───────────────────────────────────────────────────────
+# Una factura por concepto. La recarga se factura POR MANDATO a nombre del dueño;
+# la comisión y la mensualidad las factura Faro al dueño. El PDF/XML emitido por
+# el proveedor (DIAN) se guarda en MinIO y se enlaza aquí. Outbox: si la emisión
+# falla, el cobro NO se bloquea — un worker reintenta.
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    kind: Mapped[str] = mapped_column(String)                # RECARGA | COMMISSION | SUBSCRIPTION
+    session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=True)
+    issuer: Mapped[str] = mapped_column(String)              # "faro" | "owner:<id>" (mandato)
+    owner_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    recipient_user_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    amount_cents: Mapped[int] = mapped_column(Integer)       # base sin IVA
+    iva_cents: Mapped[int] = mapped_column(Integer, default=0)
+    total_cents: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String, default="stub")   # stub | factus | ...
+    provider_invoice_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    number: Mapped[str | None] = mapped_column(String, nullable=True)
+    cufe: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="PENDING")  # PENDING | ISSUED | FAILED | VOID
+    pdf_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    xml_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id, "kind": self.kind, "session_id": self.session_id,
+            "issuer": self.issuer, "amount_cop": self.amount_cents // 100,
+            "iva_cop": self.iva_cents // 100, "total_cop": self.total_cents // 100,
+            "status": self.status, "number": self.number, "cufe": self.cufe,
+            "pdf_url": self.pdf_url, "created_at": self.created_at.isoformat(),
         }

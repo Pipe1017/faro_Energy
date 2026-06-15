@@ -10,6 +10,23 @@ WOMPI_MIN_CENTS         = 150_000  # $1.500 COP — monto mínimo que acepta Wom
 CHARGE_MAX_ATTEMPTS     = 8        # reintentos de cobro antes de pasar a revisión manual
 OFFLINE_SESSION_TIMEOUT = 300      # s sin señal del cargador antes de cerrar su sesión huérfana
 
+# ── Modelo de plata "bolsas internas" (Modelo A — comisionista) ───────────────
+# El conductor paga SOLO la recarga + IVA. La comisión y la pasarela se DEBITAN
+# del saldo (bolsa) del dueño. Cada cobro CAPTURED se reparte en cuentas internas:
+#   wallet:owner:<id>  → lo que Faro le debe al dueño (pasivo)
+#   revenue:faro       → ingreso de Faro (comisión + mensualidad)
+#   tax:iva            → IVA de los servicios de Faro, por girar a la DIAN
+ACCT_FARO_REVENUE = "revenue:faro"   # bolsa de ingresos de Faro
+ACCT_FARO_IVA     = "tax:iva"        # bolsa de IVA recaudado por Faro (a la DIAN)
+
+# Quién asume el costo de pasarela (3%): "owner" (se descuenta de su saldo) o
+# "faro" (lo absorbe Faro como costo). Default: el dueño, para no erosionar margen.
+GATEWAY_BORNE_BY = os.getenv("GATEWAY_BORNE_BY", "owner").lower()
+
+# Mensualidad del dueño (suscripción a la plataforma). Parametrizable; en 0 queda
+# inerte (no se cobra ni se factura). Se debita del saldo del dueño cada mes.
+SUBSCRIPTION_COP = int(os.getenv("SUBSCRIPTION_COP", "0"))
+
 MIN_WITHDRAW_COP        = 1_000    # retiro manual mínimo del dueño
 SETTLEMENT_DAYS         = (5, 20)  # días de corte: giro automático (siguiente día hábil Colombia)
 SETTLE_CHECK_INTERVAL   = 3600     # el job revisa cada hora si hoy es día de giro
@@ -34,13 +51,17 @@ def ocpp_url(charger_id: str) -> str:
     return f"{PUBLIC_WS_BASE}/{charger_id}"
 
 
-def price_to_conductor(price_per_kwh: float) -> float:
-    """Precio final que paga el conductor por kWh, incluyendo todos los cargos."""
-    return price_per_kwh * (1 + PLATFORM_MARGIN) * (1 + IVA_RATE) * (1 + GATEWAY_FEE)
+def price_to_conductor(price_per_kwh: float, responsable_iva: bool = True) -> float:
+    """Precio final que paga el conductor por kWh (Modelo A): recarga + IVA.
+    La comisión y la pasarela NO se le suman al conductor — se descuentan del
+    saldo del dueño en la liquidación. Si el dueño no es responsable de IVA,
+    la recarga no lleva IVA."""
+    return price_per_kwh * (1 + IVA_RATE) if responsable_iva else price_per_kwh
 
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
     "ALLOWED_ORIGINS",
-    "https://faroenergy.lat,http://localhost:5173,http://localhost:3000",
+    "https://faroenergy.lat,https://admin.faroenergy.lat,"
+    "http://localhost:5173,http://localhost:5174,http://localhost:3000",
 ).split(",") if o.strip()]
 
 

@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
@@ -14,8 +15,8 @@ from models import User, Charger, ChargerBrandProfile
 from auth import hash_password
 import sim as sim_mgr
 from config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
-from engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker
-from routers import ocpp, public, auth as auth_router, chargers, reservations, driver, owner
+from engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker, _invoice_worker
+from routers import ocpp, public, auth as auth_router, chargers, reservations, driver, owner, admin
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -57,6 +58,13 @@ async def startup():
         ("ALTER TABLE reservations ADD COLUMN payment_tx_id TEXT",                                  "payment_tx_id en reservations"),
         ("ALTER TABLE reservations ADD COLUMN session_id INTEGER",                                  "session_id en reservations"),
         ("ALTER TABLE reservations ADD COLUMN settled BOOLEAN DEFAULT FALSE",                       "settled en reservations"),
+        # Modelo A — bolsas internas + datos fiscales del dueño + facturación
+        ("ALTER TABLE users ADD COLUMN rut TEXT",                                                   "rut en users"),
+        ("ALTER TABLE users ADD COLUMN responsable_iva BOOLEAN DEFAULT TRUE",                       "responsable_iva en users"),
+        ("ALTER TABLE ledger_entries ADD COLUMN account TEXT",                                      "account en ledger_entries"),
+        ("ALTER TABLE ledger_entries ALTER COLUMN owner_id DROP NOT NULL",                          "owner_id nullable en ledger_entries"),
+        ("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE",                        "email_verified en users"),
+        ("ALTER TABLE users ADD COLUMN email_verify_token TEXT",                                     "email_verify_token en users"),
     ]:
         try:
             async with engine.begin() as conn:
@@ -76,7 +84,8 @@ async def startup():
             result = await db.execute(select(User).where(User.email == o["email"]))
             user = result.scalar_one_or_none()
             if not user:
-                user = User(email=o["email"], name=o["name"], password_hash=hash_password(SEED_PASSWORD), role=o["role"])
+                user = User(email=o["email"], name=o["name"], password_hash=hash_password(SEED_PASSWORD), role=o["role"],
+                            email_verified=True)
                 db.add(user)
                 await db.flush()
                 logger.info(f"Seed: usuario {user.email}")
@@ -108,6 +117,27 @@ async def startup():
                 db.add(charger)
                 logger.info(f"Seed: cargador {charger.id}")
 
+        # ── Administrador de Faro por env (independiente de los seeds demo) ──
+        # ADMIN_EMAIL define quién es el administrador de la PLATAFORMA (rol "admin":
+        # ve todo el back-office). Si el usuario ya existe, se promueve a admin; si no,
+        # se crea con ADMIN_PASSWORD. Así tu correo real es el admin, no el demo.
+        admin_email = os.getenv("ADMIN_EMAIL", "").lower().strip()
+        admin_password = os.getenv("ADMIN_PASSWORD", "")
+        if admin_email:
+            result = await db.execute(select(User).where(User.email == admin_email))
+            admin_user = result.scalar_one_or_none()
+            if admin_user:
+                if admin_user.role != "admin":
+                    admin_user.role = "admin"
+                    logger.info(f"Admin: {admin_email} promovido a administrador de Faro")
+            elif admin_password:
+                db.add(User(email=admin_email, name="Admin Faro",
+                            password_hash=hash_password(admin_password),
+                            role="admin", email_verified=True))
+                logger.info(f"Admin: creado administrador de Faro {admin_email}")
+            else:
+                logger.warning(f"ADMIN_EMAIL={admin_email} no existe y falta ADMIN_PASSWORD para crearlo")
+
         await db.commit()
 
     # Arrancar simuladores para todos los cargadores que existan en la DB
@@ -133,6 +163,9 @@ async def startup():
     # Vencimiento de separaciones (no-show → multa al dueño)
     asyncio.create_task(_reservation_worker())
 
+    # Emisión de facturas electrónicas (outbox: stub → MinIO; Factus cuando exista)
+    asyncio.create_task(_invoice_worker())
+
 
 
 app.include_router(ocpp.router)
@@ -142,3 +175,4 @@ app.include_router(chargers.router)
 app.include_router(reservations.router)
 app.include_router(driver.router)
 app.include_router(owner.router)
+app.include_router(admin.router)
