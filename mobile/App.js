@@ -1916,9 +1916,10 @@ export default function App() {
           )}
 
           {/* ── FAB: cargador disponible más cercano ── */}
+          {/* Si la barra flotante de sesión activa está visible, sube el FAB para que no la tape */}
           {!mapOverlayOpen && (
             <TouchableOpacity
-              style={styles.nearestFab}
+              style={[styles.nearestFab, (activeSession && !isOwner) && { bottom: 172 }]}
               onPress={goToNearest}
               activeOpacity={0.85}
               accessibilityLabel="Cargador más cercano"
