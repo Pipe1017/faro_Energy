@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from database import engine, AsyncSessionLocal, Base
 from models import User, Charger, ChargerBrandProfile
-from auth import hash_password
+from auth import hash_password, verify_password
 import sim as sim_mgr
 from config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
 from engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker, _invoice_worker
@@ -132,9 +132,17 @@ async def startup():
             result = await db.execute(select(User).where(User.email == admin_email))
             admin_user = result.scalar_one_or_none()
             if admin_user:
+                # El .env es la fuente de verdad del admin: sincroniza rol, verificación
+                # y clave (si ADMIN_PASSWORD cambió) en cada arranque.
+                changed = []
                 if admin_user.role != "admin":
-                    admin_user.role = "admin"
-                    logger.info(f"Admin: {admin_email} promovido a administrador de Faro")
+                    admin_user.role = "admin"; changed.append("rol")
+                if not admin_user.email_verified:
+                    admin_user.email_verified = True; changed.append("verificado")
+                if admin_password and not verify_password(admin_password, admin_user.password_hash):
+                    admin_user.password_hash = hash_password(admin_password); changed.append("clave")
+                if changed:
+                    logger.info(f"Admin: {admin_email} actualizado ({', '.join(changed)})")
             elif admin_password:
                 db.add(User(email=admin_email, name="Admin Faro",
                             password_hash=hash_password(admin_password),
