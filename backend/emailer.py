@@ -30,6 +30,10 @@ SMTP_PASSWORD   = os.getenv("SMTP_PASSWORD", "")
 EMAIL_FROM      = os.getenv("EMAIL_FROM", SMTP_USER or "no-reply@faroenergy.lat")
 EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Faro Energy")
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE", "https://api.faroenergy.lat").rstrip("/")
+# Modo PRUEBA: si se define, TODOS los correos se redirigen a esta dirección
+# (el destinatario real va en el asunto). Útil para probar con cuentas demo sin
+# tener sus buzones. Dejar vacío en producción.
+EMAIL_REDIRECT_TO = os.getenv("EMAIL_REDIRECT_TO", "").strip()
 
 
 def is_configured() -> bool:
@@ -57,9 +61,13 @@ async def send_email(to: str, subject: str, html: str, text: str = "") -> bool:
     if not is_configured():
         logger.warning(f"SMTP no configurado — email a {to} ('{subject}') NO enviado")
         return False
+    real_to, send_to = to, to
+    if EMAIL_REDIRECT_TO:
+        subject = f"[para: {real_to}] {subject}"
+        send_to = EMAIL_REDIRECT_TO
     try:
-        await asyncio.to_thread(_send_sync, to, subject, html, text or "Abre este correo en un cliente con HTML.")
-        logger.info(f"✉ Email a {to}: {subject}")
+        await asyncio.to_thread(_send_sync, send_to, subject, html, text or "Abre este correo en un cliente con HTML.")
+        logger.info(f"✉ Email a {send_to}{f' (real: {real_to})' if EMAIL_REDIRECT_TO else ''}: {subject}")
         return True
     except Exception as e:
         logger.warning(f"Error enviando email a {to}: {e}")
