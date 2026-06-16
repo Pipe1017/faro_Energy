@@ -56,8 +56,13 @@ async def invoice_pdf(invoice_id: str, token: str, db: AsyncSession = Depends(ge
     inv = await db.get(Invoice, invoice_id)
     if not inv:
         raise HTTPException(404, "Factura no encontrada")
-    key = f"invoices/{inv.kind.lower()}/{inv.id}.pdf"
-    data = storage.get_bytes(key)
+    if inv.provider == "stub":
+        # Stub: regeneramos el PDF al vuelo (válido y consistente con los datos)
+        import invoicing
+        data = invoicing.render_invoice_pdf(inv)
+    else:
+        # Proveedor real (Factus): el PDF almacenado es el oficial
+        data = storage.get_bytes(f"invoices/{inv.kind.lower()}/{inv.id}.pdf")
     if data is None:
         raise HTTPException(404, "PDF no disponible todavía")
     return Response(content=data, media_type="application/pdf",

@@ -37,9 +37,54 @@ def provider_name() -> str:
 
 
 def _placeholder_pdf(title: str, lines: list[str]) -> bytes:
-    """PDF placeholder mínimo para el stub (no es una factura DIAN real)."""
-    body = "\n".join([title, "-" * 40, *lines, "", "*** DOCUMENTO DE PRUEBA — NO VÁLIDO DIAN ***"])
-    return ("%PDF-1.4 (stub)\n" + body + "\n%%EOF\n").encode("utf-8")
+    """Genera un PDF de una página VÁLIDO (se abre en cualquier visor) con el
+    contenido de la factura. Es de PRUEBA — no es una factura DIAN real."""
+    def esc(s: str) -> str:
+        return s.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+
+    rows = [f"({esc(title)}) Tj", "/F1 11 Tf"]
+    y = 770
+    for ln in [*lines, "", "*** DOCUMENTO DE PRUEBA - NO VALIDO DIAN ***"]:
+        rows.append(f"1 0 0 1 50 {y} Tm")
+        rows.append(f"({esc(ln)}) Tj")
+        y -= 20
+    stream = "BT\n/F1 17 Tf\n1 0 0 1 50 800 Tm\n" + "\n".join(rows) + "\nET"
+
+    objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        f"<< /Length {len(stream.encode('latin-1'))} >>\nstream\n{stream}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    ]
+    out = "%PDF-1.4\n"
+    offsets = []
+    for i, body in enumerate(objs, start=1):
+        offsets.append(len(out.encode("latin-1")))
+        out += f"{i} 0 obj\n{body}\nendobj\n"
+    xref_at = len(out.encode("latin-1"))
+    out += f"xref\n0 {len(objs)+1}\n0000000000 65535 f \n"
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n"
+    out += f"trailer\n<< /Size {len(objs)+1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n"
+    return out.encode("latin-1")
+
+
+def render_invoice_pdf(inv) -> bytes:
+    """Genera (al vuelo) el PDF de una factura desde sus datos. Lo usa el stub para
+    emitir y el back-office para mostrar/regenerar facturas de prueba."""
+    label = _KIND_LABEL.get(inv.kind, inv.kind)
+    number = inv.number or f"STUB-{inv.kind[:3]}-{inv.id[:8].upper()}"
+    cufe = inv.cufe or hashlib.sha256(f"{inv.id}|{inv.total_cents}".encode()).hexdigest()
+    return _placeholder_pdf(f"Factura {number}", [
+        f"Concepto: {label}",
+        f"Emisor: {inv.issuer}",
+        f"Base:  ${inv.amount_cents // 100:,} COP",
+        f"IVA:   ${inv.iva_cents // 100:,} COP",
+        f"Total: ${inv.total_cents // 100:,} COP",
+        f"CUFE:  {cufe}",
+    ])
 
 
 def _stub_issue(inv) -> dict:
