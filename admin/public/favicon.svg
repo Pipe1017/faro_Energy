@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Faro Energy">
+  <rect width="100" height="100" rx="22" fill="#faf7f1"/>
+  <g transform="translate(50,50) scale(0.85) translate(-60,-68)">
+    <!-- Linterna -->
+    <rect x="52" y="44" width="16" height="14" rx="3" fill="#b45309"/>
+    <!-- Techo -->
+    <path d="M50 44 L60 34 L70 44 Z" fill="#2b2520"/>
+    <!-- Torre -->
+    <path d="M53 58 L67 58 L72 98 L48 98 Z" fill="#2b2520"/>
+    <!-- Rayo calado -->
+    <path d="M62 64 L55 80 L60 80 L57 92 L66 75 L61 75 Z" fill="#faf7f1"/>
+    <!-- Base -->
+    <rect x="42" y="98" width="36" height="5" rx="2.5" fill="#b45309"/>
+  </g>
+</svg>

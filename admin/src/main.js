@@ -9,7 +9,9 @@ const TOKEN_KEY = 'faro_admin_token';
 
 const app = document.getElementById('app');
 let token = localStorage.getItem(TOKEN_KEY) || null;
-let state = { tab: 'resumen', overview: null, invoices: [], owners: [], users: [], invFilter: '', chargersData: { chargers: [], counts: {} } };
+let state = { tab: 'resumen', overview: null, invoices: [], owners: [], users: [],
+  invFilter: '', invKind: '', chargersData: { chargers: [], counts: {} },
+  ownerDetail: null, commissions: null, comPeriod: 'month' };
 
 // Estado del mapa (Leaflet) — vive fuera del re-render para no recrearlo en cada refresco
 let mapInstance = null, markersLayer = null, mapTimer = null;
@@ -48,7 +50,7 @@ function renderLogin(error = '') {
   app.innerHTML = `
     <div class="login">
       <div class="login-card">
-        <div class="brand">Faro <span>Energy</span></div>
+        <img src="/logo-faro-claro.svg" class="brand-logo" alt="Faro Energy Admin" />
         <div class="brand-sub">Administración · CPO</div>
         <form id="login-form">
           <label>Correo</label>
@@ -85,11 +87,11 @@ function renderLogin(error = '') {
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function renderApp() {
   clearMap();  // al cambiar de pestaña, soltar el mapa anterior
-  const tabs = [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['duenos', 'Dueños'], ['usuarios', 'Usuarios']];
+  const tabs = [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['comisiones', 'Comisiones'], ['duenos', 'Dueños'], ['usuarios', 'Usuarios']];
   app.innerHTML = `
     <div class="shell">
       <aside class="side">
-        <div class="brand">Faro <span>Energy</span></div>
+        <img src="/logo-faro-claro.svg" class="brand-logo" alt="Faro Energy Admin" />
         <nav>
           ${tabs.map(([k, l]) => `<button class="nav ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('')}
         </nav>
@@ -99,7 +101,7 @@ function renderApp() {
     </div>`;
   document.getElementById('logout').addEventListener('click', logout);
   app.querySelectorAll('.nav').forEach((b) =>
-    b.addEventListener('click', () => { state.tab = b.dataset.tab; renderApp(); }));
+    b.addEventListener('click', () => { state.tab = b.dataset.tab; state.ownerDetail = null; renderApp(); }));
   renderTab();
 }
 
@@ -108,8 +110,18 @@ async function renderTab() {
   try {
     if (state.tab === 'resumen') { state.overview = await api('/admin/overview'); renderResumen(view); }
     else if (state.tab === 'mapa') { state.chargersData = await api('/admin/chargers'); renderMapa(view); }
-    else if (state.tab === 'facturas') { state.invoices = await api(`/admin/invoices${state.invFilter ? '?status=' + state.invFilter : ''}`); renderFacturas(view); }
-    else if (state.tab === 'duenos') { state.owners = await api('/admin/owners'); renderDuenos(view); }
+    else if (state.tab === 'facturas') {
+      const p = new URLSearchParams();
+      if (state.invFilter) p.set('status', state.invFilter);
+      if (state.invKind) p.set('kind', state.invKind);
+      state.invoices = await api('/admin/invoices' + (p.toString() ? '?' + p : ''));
+      renderFacturas(view);
+    }
+    else if (state.tab === 'comisiones') { state.commissions = await api('/admin/commissions?period=' + state.comPeriod); renderComisiones(view); }
+    else if (state.tab === 'duenos') {
+      if (state.ownerDetail) { renderOwnerDetail(view); }
+      else { state.owners = await api('/admin/owners'); renderDuenos(view); }
+    }
     else if (state.tab === 'usuarios') { state.users = await api('/admin/users'); renderUsuarios(view); }
   } catch (err) {
     view.innerHTML = `<div class="error-box">${err.message}</div>`;
@@ -243,10 +255,14 @@ function badge(status) {
 
 function renderFacturas(view) {
   const filters = ['', 'PENDING', 'ISSUED', 'FAILED'];
+  const kinds = [['', 'Todos'], ['RECARGA', 'Recarga'], ['COMMISSION', 'Comisión'], ['SUBSCRIPTION', 'Mensualidad']];
   view.innerHTML = `
     <h1>Facturas</h1>
     <div class="filters">
       ${filters.map((f) => `<button class="chip ${state.invFilter === f ? 'active' : ''}" data-f="${f}">${f || 'Todas'}</button>`).join('')}
+    </div>
+    <div class="filters">
+      ${kinds.map(([k, l]) => `<button class="chip ${state.invKind === k ? 'active' : ''}" data-k="${k}">${l}</button>`).join('')}
     </div>
     <table>
       <thead><tr><th>Tipo</th><th>Emisor</th><th>Total</th><th>Estado</th><th>Intentos</th><th>Error</th><th></th></tr></thead>
@@ -264,8 +280,10 @@ function renderFacturas(view) {
           </tr>`).join('')}
       </tbody>
     </table>`;
-  view.querySelectorAll('.chip').forEach((c) =>
+  view.querySelectorAll('[data-f]').forEach((c) =>
     c.addEventListener('click', () => { state.invFilter = c.dataset.f; renderTab(); }));
+  view.querySelectorAll('[data-k]').forEach((c) =>
+    c.addEventListener('click', () => { state.invKind = c.dataset.k; renderTab(); }));
   view.querySelectorAll('[data-retry]').forEach((b) =>
     b.addEventListener('click', async () => {
       b.disabled = true; b.textContent = '…';
@@ -278,21 +296,125 @@ function renderFacturas(view) {
 function renderDuenos(view) {
   view.innerHTML = `
     <h1>Dueños</h1>
+    <p class="muted" style="margin-bottom:12px;">Toca un dueño para ver su estado de cuenta y pagarle.</p>
     <table>
       <thead><tr><th>Nombre</th><th>Correo</th><th>Saldo</th><th>Cargadores</th><th>IVA</th><th>RUT / KYC</th></tr></thead>
       <tbody>
         ${state.owners.length === 0 ? `<tr><td colspan="6" class="empty">Sin dueños</td></tr>` :
           state.owners.map((o) => `
-          <tr>
-            <td>${o.name} ${o.role === 'admin' ? '<span class="badge muted">admin</span>' : ''}</td>
+          <tr class="clickable" data-owner="${o.id}">
+            <td>${o.name}</td>
             <td class="muted">${o.email}</td>
-            <td>${cop(o.balance_cop)}</td>
+            <td><b>${cop(o.balance_cop)}</b></td>
             <td>${o.chargers}</td>
             <td>${o.responsable_iva ? '<span class="badge ok">Responsable</span>' : '<span class="badge muted">No</span>'}</td>
             <td>${o.kyc_ok ? `<span class="badge ok">${o.rut}</span>` : '<span class="badge danger">Falta</span>'}</td>
           </tr>`).join('')}
       </tbody>
     </table>`;
+  view.querySelectorAll('[data-owner]').forEach((r) => r.addEventListener('click', async () => {
+    try { state.ownerDetail = await api(`/admin/owners/${r.dataset.owner}`); renderTab(); }
+    catch (err) { alert(err.message); }
+  }));
+}
+
+function renderOwnerDetail(view) {
+  const o = state.ownerDetail;
+  const s = o.statement;
+  const acc = o.disbursement_account;
+  view.innerHTML = `
+    <button class="mini" id="back" style="background:none;color:#b45309;padding:0;margin-bottom:14px;">← Volver a dueños</button>
+    <h1>${o.name}</h1>
+    <p class="muted" style="margin-bottom:14px;">${o.email} · tag ${o.tag || '—'} · ${o.responsable_iva ? 'Responsable de IVA' : 'No responsable de IVA'} · KYC: ${o.kyc_ok ? 'OK' : 'Falta RUT'}</p>
+
+    <div class="section-title">Estado de cuenta</div>
+    <div class="cards">
+      ${card('Recaudado', cop(s.recaudado_cop), 'recargas cobradas')}
+      ${card('− Comisión Faro', cop(s.comision_cop))}
+      ${card('− Pasarela', cop(s.pasarela_cop))}
+      ${card('− Mensualidad', cop(s.mensualidad_cop))}
+      ${card('Ya pagado', cop(s.girado_cop), 'dispersado')}
+      ${card('SALDO POR PAGAR', cop(s.saldo_cop), '', 'accent')}
+    </div>
+
+    <div class="section-title">Pago al dueño</div>
+    <div class="card" style="max-width:420px;">
+      <div class="muted" style="font-size:.85rem;margin-bottom:6px;">
+        Cuenta: ${acc ? `${acc.display || (acc.type + ' ' + (acc.phone || acc.account_number || ''))}` : '<span class="badge danger">sin cuenta de dispersión</span>'}
+      </div>
+      <button class="mini" id="pay" ${s.saldo_cop <= 0 ? 'disabled' : ''}>Registrar pago de ${cop(s.saldo_cop)}</button>
+    </div>
+
+    <div class="section-title">Pagos realizados</div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th><th>Estado</th></tr></thead>
+      <tbody>
+        ${o.disbursements.length === 0 ? `<tr><td colspan="5" class="empty">Sin pagos</td></tr>` :
+          o.disbursements.map((d) => `<tr><td class="muted">${fmtTime(d.created_at)}</td><td>${cop(d.amount_cop)}</td>
+            <td>${d.method || 'WOMPI'}</td><td class="muted">${d.note || ''}</td><td>${badge(d.status)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="section-title">Facturas</div>
+    <table>
+      <thead><tr><th>Tipo</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${o.invoices.length === 0 ? `<tr><td colspan="4" class="empty">Sin facturas</td></tr>` :
+          o.invoices.map((i) => `<tr><td>${i.kind}</td><td>${cop(i.total_cop)}</td><td>${badge(i.status)}</td>
+            <td>${i.pdf_url ? `<a class="mini" href="${i.pdf_url}" target="_blank">PDF</a>` : ''}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="section-title">Cargadores (${o.chargers.length})</div>
+    <table>
+      <thead><tr><th>ID</th><th>Lugar</th><th>kW</th><th>Precio</th><th>Estado</th></tr></thead>
+      <tbody>
+        ${o.chargers.map((c) => `<tr><td>${c.id}</td><td class="muted">${c.location}</td><td>${c.power_kw}</td>
+          <td>${cop(c.price)}</td><td>${c.online ? '<span class="badge ok">En línea</span>' : '<span class="badge danger">Offline</span>'}</td></tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  document.getElementById('back').addEventListener('click', () => { state.ownerDetail = null; renderTab(); });
+  const payBtn = document.getElementById('pay');
+  if (payBtn) payBtn.addEventListener('click', () => openPayModal(o));
+}
+
+function openPayModal(o) {
+  const note = prompt(
+    `Registrar pago manual a ${o.name} por ${cop(o.statement.saldo_cop)}.\n\n` +
+    `Escribe la referencia del pago (ej. "Nequi 300..." o "Transf. Bancolombia #123"):`, '');
+  if (note === null) return;   // canceló
+  api(`/admin/owners/${o.id}/disburse`, {
+    method: 'POST', body: JSON.stringify({ method: 'MANUAL', note }),
+  }).then((r) => {
+    alert(`Pago registrado: ${cop(r.amount_cop)}. Saldo nuevo: ${cop(r.new_balance_cop)}.`);
+    return api(`/admin/owners/${o.id}`);
+  }).then((d) => { state.ownerDetail = d; renderTab(); })
+    .catch((err) => alert(err.message));
+}
+
+// ── Comisiones ──────────────────────────────────────────────────────────────────
+function renderComisiones(view) {
+  const c = state.commissions;
+  const periods = [['today', 'Hoy'], ['week', '7 días'], ['month', '30 días']];
+  view.innerHTML = `
+    <h1>Comisiones</h1>
+    <div class="filters">
+      ${periods.map(([p, l]) => `<button class="chip ${state.comPeriod === p ? 'active' : ''}" data-p="${p}">${l}</button>`).join('')}
+    </div>
+    <div class="cards">
+      ${card('Comisión Faro', cop(c.total_cop), 'en el periodo', 'accent')}
+    </div>
+    <div class="section-title">Por dueño</div>
+    <table>
+      <thead><tr><th>Dueño</th><th>Comisión</th></tr></thead>
+      <tbody>
+        ${c.by_owner.length === 0 ? `<tr><td colspan="2" class="empty">Sin comisiones en el periodo</td></tr>` :
+          c.by_owner.map((r) => `<tr><td>${r.owner}</td><td><b>${cop(r.commission_cop)}</b></td></tr>`).join('')}
+      </tbody>
+    </table>`;
+  view.querySelectorAll('[data-p]').forEach((b) =>
+    b.addEventListener('click', () => { state.comPeriod = b.dataset.p; renderTab(); }));
 }
 
 // ── Usuarios ─────────────────────────────────────────────────────────────────

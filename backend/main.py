@@ -72,6 +72,8 @@ async def startup():
         ("CREATE UNIQUE INDEX IF NOT EXISTS uq_user_email_role ON users (email, role)",              "índice único (email, role)"),
         ("ALTER TABLE users ADD COLUMN tag TEXT",                                                     "tag (idTag OCPP) en users"),
         ("CREATE UNIQUE INDEX IF NOT EXISTS uq_user_tag ON users (tag)",                              "índice único de tag"),
+        ("ALTER TABLE disbursement_records ADD COLUMN method TEXT DEFAULT 'WOMPI'",                   "method en disbursement_records"),
+        ("ALTER TABLE disbursement_records ADD COLUMN note TEXT",                                     "note en disbursement_records"),
     ]:
         try:
             async with engine.begin() as conn:
@@ -181,9 +183,14 @@ async def startup():
     # Worker de cobros (outbox) + cierre de sesiones huérfanas
     asyncio.create_task(_charge_worker())
 
-    # Liquidación automática a dueños + backfill de sesiones pre-ledger
+    # Liquidación a dueños: backfill + (giro automático SOLO si AUTO_SETTLEMENT)
     await _backfill_ledger()
-    asyncio.create_task(_settlement_worker())
+    from config import AUTO_SETTLEMENT
+    if AUTO_SETTLEMENT:
+        asyncio.create_task(_settlement_worker())
+        logger.info("Pago automático a dueños: ACTIVADO (días 5/20)")
+    else:
+        logger.info("Pago automático a dueños: DESACTIVADO — pagos manuales desde el back-office")
     asyncio.create_task(_offline_watcher())
 
     # Vencimiento de separaciones (no-show → multa al dueño)

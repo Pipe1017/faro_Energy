@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,8 +18,8 @@ from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransac
                     PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
                     Reservation, mask_email)
 from auth import get_current_user
-from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA
-from engine import _faro_balance_cents
+from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA, MIN_WITHDRAW_COP
+from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner
 from state import connected_chargers
 
 logger = logging.getLogger(__name__)
@@ -136,8 +137,9 @@ async def list_chargers(_: User = Depends(require_admin), db: AsyncSession = Dep
 
 @router.get("/owners")
 async def list_owners(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """Dueños con su saldo (bolsa), estatus fiscal y nº de cargadores."""
-    result = await db.execute(select(User).where(User.role.in_(["owner", "admin"])))
+    """Dueños con su saldo (bolsa), estatus fiscal y nº de cargadores.
+    El admin de Faro NO es dueño de cargadores → no aparece aquí."""
+    result = await db.execute(select(User).where(User.role == "owner"))
     owners = result.scalars().all()
     out = []
     for o in owners:
@@ -155,6 +157,117 @@ async def list_owners(_: User = Depends(require_admin), db: AsyncSession = Depen
         })
     out.sort(key=lambda x: x["balance_cop"], reverse=True)
     return out
+
+
+async def _owner_statement(db: AsyncSession, owner_id: str) -> dict:
+    """Estado de cuenta del dueño a partir del ledger (todo en COP)."""
+    async def s(*conds):
+        r = await db.execute(select(func.coalesce(func.sum(LedgerEntry.amount_cents), 0))
+                             .where(LedgerEntry.owner_id == owner_id, *conds))
+        return int(r.scalar() or 0) // 100
+    earning      = await s(LedgerEntry.type == "EARNING")
+    commission   = await s(LedgerEntry.type == "COMMISSION")     # negativo
+    gateway      = await s(LedgerEntry.type == "GATEWAY")        # negativo
+    subscription = await s(LedgerEntry.type == "SUBSCRIPTION")   # negativo
+    disbursed    = await s(LedgerEntry.type == "DISBURSEMENT")   # negativo
+    balance      = await s(LedgerEntry.account.is_(None))        # saldo neto actual
+    return {
+        "recaudado_cop": earning,
+        "comision_cop": -commission,
+        "pasarela_cop": -gateway,
+        "mensualidad_cop": -subscription,
+        "girado_cop": -disbursed,
+        "saldo_cop": balance,
+    }
+
+
+@router.get("/owners/{owner_id}")
+async def owner_detail(owner_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Detalle del dueño: estado de cuenta, datos fiscales, cuenta de dispersión,
+    cargadores, facturas y pagos (dispersiones)."""
+    o = await db.get(User, owner_id)
+    if not o or o.role != "owner":
+        raise HTTPException(404, "Dueño no encontrado")
+
+    statement = await _owner_statement(db, owner_id)
+    acc = (await db.execute(select(DisbursementAccount).where(DisbursementAccount.user_id == owner_id))).scalar_one_or_none()
+    chargers = (await db.execute(select(Charger).where(Charger.owner_id == owner_id).order_by(Charger.id))).scalars().all()
+    invoices = (await db.execute(
+        select(Invoice).where(Invoice.owner_id == owner_id).order_by(Invoice.created_at.desc()).limit(50)
+    )).scalars().all()
+    disburses = (await db.execute(
+        select(DisbursementRecord).where(DisbursementRecord.owner_id == owner_id).order_by(DisbursementRecord.created_at.desc()).limit(50)
+    )).scalars().all()
+
+    return {
+        "id": o.id, "name": o.name, "email": o.email, "tag": o.tag,
+        "rut": o.rut, "responsable_iva": o.responsable_iva, "kyc_ok": bool(o.rut),
+        "statement": statement,
+        "disbursement_account": acc.to_dict() if acc else None,
+        "chargers": [{"id": c.id, "location": c.location, "power_kw": c.power_kw,
+                      "price": c.price_per_kwh, "online": c.id in connected_chargers} for c in chargers],
+        "invoices": [i.to_dict() for i in invoices],
+        "disbursements": [d.to_dict() for d in disburses],
+    }
+
+
+class DisburseBody(BaseModel):
+    amount_cop: int | None = None   # None = pagar todo el saldo
+    method: str = "MANUAL"          # MANUAL (por ahora) | WOMPI (futuro)
+    note: str | None = None         # referencia: "Nequi 300..." / "Transf. Bancolombia #123"
+
+
+@router.post("/owners/{owner_id}/disburse")
+async def disburse_owner(owner_id: str, body: DisburseBody,
+                         _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Registra un pago al dueño (modo MANUAL: tú transfieres y lo dejas registrado).
+    Descuenta el saldo del ledger. El modo WOMPI (automático) se enchufa después."""
+    o = await db.get(User, owner_id)
+    if not o or o.role != "owner":
+        raise HTTPException(404, "Dueño no encontrado")
+    async with _settle_lock(owner_id):
+        balance = await _owner_balance_cents(db, owner_id)
+        amount = (body.amount_cop * 100) if body.amount_cop else balance
+        if amount <= 0:
+            raise HTTPException(400, "No hay saldo por pagar")
+        if amount > balance:
+            raise HTTPException(400, f"El monto supera el saldo disponible (${balance // 100:,} COP)")
+        record = DisbursementRecord(owner_id=owner_id, amount_cents=amount,
+                                    status="SENT", method=body.method, note=body.note)
+        db.add(record)
+        await db.flush()
+        db.add(LedgerEntry(owner_id=owner_id, disbursement_id=record.id, type="DISBURSEMENT",
+                           amount_cents=-amount, description=f"Pago {body.method}" + (f" — {body.note}" if body.note else "")))
+        _notify_owner(db, owner_id, "SETTLEMENT_SENT",
+                      f"Te pagamos ${amount // 100:,} COP" + (f" ({body.note})" if body.note else ""))
+        await db.commit()
+    return {"ok": True, "amount_cop": amount // 100, "new_balance_cop": (balance - amount) // 100}
+
+
+@router.get("/commissions")
+async def commissions(period: str = "month", _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Comisión de Faro (ingreso) por periodo, total y por dueño."""
+    now = datetime.now(BOGOTA)
+    since = None
+    if period == "today":   since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":  since = now - timedelta(days=7)
+    elif period == "month": since = now - timedelta(days=30)
+
+    q = select(func.coalesce(func.sum(LedgerEntry.amount_cents), 0)).where(LedgerEntry.account == ACCT_FARO_REVENUE)
+    if since: q = q.where(LedgerEntry.created_at >= since)
+    total = int((await db.execute(q)).scalar() or 0)
+
+    # Por dueño: la comisión que se le descontó (type COMMISSION, negativo)
+    qd = (select(LedgerEntry.owner_id, func.coalesce(func.sum(LedgerEntry.amount_cents), 0))
+          .where(LedgerEntry.type == "COMMISSION").group_by(LedgerEntry.owner_id))
+    if since: qd = qd.where(LedgerEntry.created_at >= since)
+    rows = (await db.execute(qd)).all()
+    by_owner = []
+    for oid, amt in rows:
+        o = await db.get(User, oid) if oid else None
+        by_owner.append({"owner": o.name if o else "—", "owner_id": oid, "commission_cop": -int(amt) // 100})
+    by_owner.sort(key=lambda x: x["commission_cop"], reverse=True)
+    return {"period": period, "total_cop": total // 100, "by_owner": by_owner}
 
 
 # ── Usuarios ──────────────────────────────────────────────────────────────────
@@ -247,12 +360,15 @@ async def delete_user(user_id: str, _: User = Depends(require_admin), db: AsyncS
 
 
 @router.get("/invoices")
-async def list_invoices(status: str | None = None, limit: int = 100,
+async def list_invoices(status: str | None = None, kind: str | None = None,
+                        owner_id: str | None = None, limit: int = 100,
                         _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """Facturas, opcionalmente filtradas por estado (PENDING/ISSUED/FAILED)."""
+    """Facturas, filtrables por estado (PENDING/ISSUED/FAILED), tipo (RECARGA/
+    COMMISSION/SUBSCRIPTION) y dueño."""
     q = select(Invoice).order_by(Invoice.created_at.desc()).limit(min(limit, 500))
-    if status:
-        q = q.where(Invoice.status == status.upper())
+    if status:   q = q.where(Invoice.status == status.upper())
+    if kind:     q = q.where(Invoice.kind == kind.upper())
+    if owner_id: q = q.where(Invoice.owner_id == owner_id)
     result = await db.execute(q)
     return [inv.to_dict() | {"attempts": inv.attempts, "last_error": inv.last_error,
                              "provider": inv.provider} for inv in result.scalars().all()]

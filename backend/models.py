@@ -383,6 +383,8 @@ class DisbursementRecord(Base):
     amount_cents: Mapped[int] = mapped_column(Integer)
     wompi_disbursement_id: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="PENDING")   # PENDING | SENT | FAILED | PENDING_ACTIVATION
+    method: Mapped[str] = mapped_column(String, default="WOMPI")     # WOMPI | MANUAL
+    note: Mapped[str | None] = mapped_column(String, nullable=True)  # referencia del pago manual
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     session: Mapped["Session | None"] = relationship("Session", back_populates="disbursement")
@@ -391,6 +393,7 @@ class DisbursementRecord(Base):
         return {
             "id": self.id, "session_id": self.session_id, "owner_id": self.owner_id,
             "amount_cop": self.amount_cents // 100, "status": self.status,
+            "method": self.method, "note": self.note,
             "wompi_disbursement_id": self.wompi_disbursement_id,
             "created_at": self.created_at.isoformat(),
         }

@@ -34,6 +34,9 @@ REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").low
 MIN_WITHDRAW_COP        = 1_000    # retiro manual mínimo del dueño
 SETTLEMENT_DAYS         = (5, 20)  # días de corte: giro automático (siguiente día hábil Colombia)
 SETTLE_CHECK_INTERVAL   = 3600     # el job revisa cada hora si hoy es día de giro
+# Pago automático a dueños (job días 5/20). Desactivado: los pagos se hacen
+# manualmente desde el back-office. Activar con AUTO_SETTLEMENT=true.
+AUTO_SETTLEMENT         = os.getenv("AUTO_SETTLEMENT", "false").lower() == "true"
 
 # ── Separación / reserva de cargador ──────────────────────────────────────────
 # El conductor "separa" un cargador: se RETIENE (no se cobra) una garantía en su
