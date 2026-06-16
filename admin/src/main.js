@@ -28,7 +28,9 @@ async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1', ...options.headers };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  if (res.status === 401 || res.status === 403) { logout(); throw new Error('Sesión inválida'); }
+  // Solo el 401 (token inválido/vencido) cierra sesión. El 403 u otros errores
+  // se lanzan como error normal — no botan al usuario al login.
+  if (res.status === 401) { logout(); throw new Error('Sesión vencida'); }
   if (!res.ok) {
     let detail = `Error ${res.status}`;
     try { detail = (await res.json()).detail || detail; } catch {}
@@ -468,11 +470,14 @@ function renderUsuarios(view) {
 // ── Arranque ─────────────────────────────────────────────────────────────────
 async function boot() {
   if (!token) return renderLogin();
+  // Optimista: con un token guardado, entramos directo (no se sale al recargar).
+  renderApp();
+  // Validamos en segundo plano: si el token es inválido (401), api() cierra sesión;
+  // si es un error de red/transitorio, mantenemos la sesión.
   try {
     const me = await api('/auth/me');
-    if (me.role !== 'admin') return logout();
-    renderApp();
-  } catch { renderLogin(); }
+    if (me.role !== 'admin') logout();
+  } catch { /* red/transitorio: no tocar la sesión */ }
 }
 
 boot();

@@ -61,79 +61,37 @@
     </div>
   </nav>
 
-  <!-- ───────────────────────────── HERO ──────────────────────────────── -->
-  <section>
-    <div class="container">
-      <div class="hero">
-        <div class="hero__content">
-          <div class="aud-section__badge" style="margin-bottom:20px;">Software de gestión · SaaS</div>
-          <h1 class="hero__title">
-            El sistema operativo<br/>
-            para tu red de<br/>
-            <em>cargadores eléctricos</em>
-          </h1>
-          <p class="hero__subtitle">
-            Conecta tus cargadores, cobra automáticamente a los conductores
-            y recibe reportes en tiempo real. Pagas mensual por cargador — sin complicaciones técnicas.
-          </p>
-
-          <ul class="hero__bullets">
-            <li>Dashboard multi-sede en tiempo real</li>
-            <li>Cobro automático por kWh — sin intervención manual</li>
-            <li>Compatible con cualquier cargador del mercado</li>
-          </ul>
-
-          <div class="hero__actions">
-            <a href="#contacto" class="btn btn--primary">Solicitar demo gratuita</a>
-            <a href="#precios" class="btn btn--outline">Ver precios</a>
-          </div>
-        </div>
-
-        <div style="display:flex;justify-content:center;align-items:center;height:100%;">
-          <div class="phone" style="max-width:270px;">
-            <div class="phone__notch"></div>
-            <img src="/DashboardDeGanancias.jpeg" alt="Dashboard de gestión Faro Energy" />
-          </div>
-        </div>
+  <!-- ───────────────────────── SPLIT HERO ───────────────────────────── -->
+  <section class="split" id="opciones">
+    <a href="#conductores" class="split__half split__half--conductor">
+      <div class="split__inner">
+        <span class="split__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </span>
+        <div class="split__label">Quiero cargar mi vehículo</div>
+        <h2 class="split__title">Soy conductor</h2>
+        <p class="split__text">Encuentra puntos de carga en toda la red y paga solo lo que usas. Pago seguro con Wompi.</p>
+        <span class="split__cta">Ver la red de carga</span>
       </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────── DOS OPCIONES ────────────────────────────── -->
-  <section class="section" id="opciones">
-    <div class="container">
-      <div class="section__header section__header--center reveal">
-        <div class="label">Dos formas de usar Faro</div>
-        <h2>¿Conductor o dueño de cargador?</h2>
-        <p class="centered">Una sola red de carga, cada vez más grande. Entra como conductor o como dueño — o ambos con el mismo correo.</p>
+    </a>
+    <a href="#duenos" class="split__half split__half--dueno">
+      <div class="split__inner">
+        <span class="split__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
+            <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+            <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>
+            <path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>
+          </svg>
+        </span>
+        <div class="split__label">Quiero ganar dinero</div>
+        <h2 class="split__title">Soy dueño de cargadores</h2>
+        <p class="split__text">Hoteles, centros comerciales y parqueaderos: genera ingresos con tu espacio.</p>
+        <span class="split__cta">Ganar con mi parqueadero</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:8px;">
-        <div class="reveal" style="background:#fff;border:1px solid #ece3d6;border-radius:20px;padding:34px;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(43,37,32,.06);">
-          <div style="width:42px;height:3px;background:#b45309;border-radius:2px;margin-bottom:20px;"></div>
-          <div class="label">Para conductores</div>
-          <h3 style="font-size:26px;margin:6px 0 10px;color:#2b2520;letter-spacing:-.5px;">Carga en toda la red</h3>
-          <p style="color:#6b5d4a;line-height:1.6;">Accede a una red de puntos de carga en crecimiento por toda la ciudad. Ves el precio en el mapa antes de llegar y pagas solo lo que consumes.</p>
-          <ul style="list-style:none;padding:0;margin:20px 0 26px;">
-            <li style="border-left:2px solid #e7d9c4;padding:3px 0 3px 14px;margin-bottom:11px;color:#4a4239;">Muchos puntos de carga, cerca de ti</li>
-            <li style="border-left:2px solid #e7d9c4;padding:3px 0 3px 14px;margin-bottom:11px;color:#4a4239;">Precio visible en el mapa antes de llegar</li>
-            <li style="border-left:2px solid #e7d9c4;padding:3px 0 3px 14px;color:#4a4239;">Pagas seguro con Wompi — solo lo que usas</li>
-          </ul>
-          <a href="#app" class="btn btn--primary" style="margin-top:auto;justify-content:center;">Usar la red</a>
-        </div>
-        <div class="reveal" style="background:#fff;border:1px solid #ece3d6;border-radius:20px;padding:34px;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(43,37,32,.06);">
-          <div style="width:42px;height:3px;background:#b45309;border-radius:2px;margin-bottom:20px;"></div>
-          <div class="label">Para dueños</div>
-          <h3 style="font-size:26px;margin:6px 0 10px;color:#2b2520;letter-spacing:-.5px;">Genera ingresos con tu cargador</h3>
-          <p style="color:#6b5d4a;line-height:1.6;">Suma tu cargador a la red y conviértelo en un ingreso. Tú pones el precio y recibes el pago automático cada vez que alguien carga.</p>
-          <ul style="list-style:none;padding:0;margin:20px 0 26px;">
-            <li style="border-left:2px solid #e7d9c4;padding:3px 0 3px 14px;margin-bottom:11px;color:#4a4239;">Tú fijas el precio por kWh</li>
-            <li style="border-left:2px solid #e7d9c4;padding:3px 0 3px 14px;margin-bottom:11px;color:#4a4239;">El dinero llega directo a tu Nequi o banco</li>
-            <li style="border-left:2px solid #e7d9c4;padding:3px 0 3px 14px;color:#4a4239;">Ves tus ganancias en tiempo real</li>
-          </ul>
-          <a href="#contacto" class="btn btn--primary" style="margin-top:auto;justify-content:center;">Registrar mi cargador</a>
-        </div>
-      </div>
-    </div>
+    </a>
   </section>
 
   <!-- ────────────── CÓMO FUNCIONA (OPERADORES) ──────────────────────── -->
