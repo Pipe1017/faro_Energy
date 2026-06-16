@@ -276,7 +276,7 @@ function renderFacturas(view) {
             <td>${badge(i.status)}</td>
             <td>${i.attempts}</td>
             <td class="err">${i.last_error ? i.last_error.slice(0, 60) : ''}</td>
-            <td>${i.status !== 'ISSUED' ? `<button class="mini" data-retry="${i.id}">Reintentar</button>` : (i.pdf_url ? `<a class="mini" href="${i.pdf_url}" target="_blank">PDF</a>` : '')}</td>
+            <td>${i.status !== 'ISSUED' ? `<button class="mini" data-retry="${i.id}">Reintentar</button>` : (i.pdf_url ? `<a class="mini" href="${API_URL}/admin/invoices/${i.id}/pdf?token=${token}" target="_blank">PDF</a>` : '')}</td>
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -361,7 +361,7 @@ function renderOwnerDetail(view) {
       <tbody>
         ${o.invoices.length === 0 ? `<tr><td colspan="4" class="empty">Sin facturas</td></tr>` :
           o.invoices.map((i) => `<tr><td>${i.kind}</td><td>${cop(i.total_cop)}</td><td>${badge(i.status)}</td>
-            <td>${i.pdf_url ? `<a class="mini" href="${i.pdf_url}" target="_blank">PDF</a>` : ''}</td></tr>`).join('')}
+            <td>${i.pdf_url ? `<a class="mini" href="${API_URL}/admin/invoices/${i.id}/pdf?token=${token}" target="_blank">PDF</a>` : ''}</td></tr>`).join('')}
       </tbody>
     </table>
 

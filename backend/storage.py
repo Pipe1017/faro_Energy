@@ -61,5 +61,21 @@ def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stre
     return f"{scheme}://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{key}"
 
 
+def get_bytes(key: str) -> bytes | None:
+    """Lee un objeto de MinIO (o del fallback local). None si no existe."""
+    client = _get_client()
+    if client is None:
+        path = _LOCAL_DIR / key
+        return path.read_bytes() if path.exists() else None
+    try:
+        resp = client.get_object(MINIO_BUCKET, key)
+        data = resp.read()
+        resp.close(); resp.release_conn()
+        return data
+    except Exception as e:
+        logger.warning(f"get_bytes {key}: {e}")
+        return None
+
+
 def is_configured() -> bool:
     return bool(MINIO_ENDPOINT)

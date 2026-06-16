@@ -8,6 +8,8 @@ import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
+from jose import jwt, JWTError
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -17,10 +19,11 @@ from database import get_db
 from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction,
                     PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
                     Reservation, mask_email)
-from auth import get_current_user
+from auth import get_current_user, SECRET_KEY, ALGORITHM
 from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA, MIN_WITHDRAW_COP
 from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner
 from state import connected_chargers
+import storage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin")
@@ -30,6 +33,35 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise HTTPException(403, "Solo administradores")
     return current_user
+
+
+async def _admin_from_token(token: str, db: AsyncSession) -> User:
+    """Valida admin desde un token en query (para abrir archivos en el navegador,
+    donde no se puede mandar header Authorization)."""
+    try:
+        uid = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])["sub"]
+    except (JWTError, KeyError):
+        raise HTTPException(401, "Token inválido")
+    u = await db.get(User, uid)
+    if not u or u.role != "admin":
+        raise HTTPException(403, "Solo administradores")
+    return u
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def invoice_pdf(invoice_id: str, token: str, db: AsyncSession = Depends(get_db)):
+    """Sirve el PDF de la factura a través de la API (el backend lo lee de MinIO
+    por dentro; el navegador nunca toca MinIO directo)."""
+    await _admin_from_token(token, db)
+    inv = await db.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(404, "Factura no encontrada")
+    key = f"invoices/{inv.kind.lower()}/{inv.id}.pdf"
+    data = storage.get_bytes(key)
+    if data is None:
+        raise HTTPException(404, "PDF no disponible todavía")
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="factura-{inv.number or inv.id}.pdf"'})
 
 
 def _cop(cents: int | None) -> int:
