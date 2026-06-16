@@ -1300,11 +1300,16 @@ img { max-width: 100%; display: block; }
   border-bottom: 2px solid transparent; padding-bottom: 3px; transition: border-color .2s ease;
 }
 .split__half:hover .split__cta { border-color: #b45309; }
+.split__phone {
+  max-width: 210px;
+  margin: 30px auto 0;
+}
 
 @media (max-width: 760px) {
   .split { flex-direction: column; min-height: auto; }
-  .split__half { padding: 52px 28px; }
+  .split__half { padding: 48px 28px; }
   .split__half--dueno { border-left: none; border-top: 1px solid #ece3d6; }
   .split__half:hover { flex: 1; }
-  .split__title { font-size: 34px; }
+  .split__title { font-size: 32px; }
+  .split__phone { max-width: 200px; }
 }
