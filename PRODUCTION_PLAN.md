@@ -13,6 +13,37 @@ Cada item tiene **Hecho cuando** (criterio de aceptación verificable).
 
 ---
 
+## 📊 Estado al 2026-06-15
+
+Avanzamos en **infraestructura y operación**, pero **los portones que habilitan cobrar
+plata real al público siguen cerrados**.
+
+| Fase / item | Estado | Nota |
+|---|---|---|
+| 0.1 Estructura tributaria | 🟡 parcial | Modelo A decidido e implementado en código; **falta validación de contador** + `docs/facturacion.md` |
+| 0.2 T&C + Habeas Data | 🔴 sin hacer | No hay textos ni aceptación en el registro |
+| 0.3 Contrato dueño↔Faro | 🔴 sin hacer | |
+| 1.1 Backups Postgres | 🔴 sin hacer | Riesgo: perder el ledger |
+| 1.2 Monitoreo (Sentry) | 🔴 sin hacer | |
+| 1.3 Tests del motor de plata | 🔴 sin hacer | **Siguen en cero** |
+| 1.4 CI | 🔴 sin hacer | |
+| 1.5 **Wompi producción** | 🔴 sin hacer | **Sigue en SANDBOX → nadie paga de verdad** |
+| 2.1 MinIO | ✅ hecho | |
+| 2.2 Facturación DIAN | 🟡 parcial | Pipeline + outbox listos, pero **stub** (no factura DIAN real) |
+| 2.3 Email transaccional | ✅ hecho | Gmail SMTP + plantillas |
+| 3.1 Estado de cargadores | 🟡 parcial | Mapa en el **admin** (para ti); falta en la app del **conductor** |
+| 3.2 Reviews | 🔴 sin hacer | |
+| 4.2 Verificación de correo | ✅ hecho | (falta "recuperar contraseña") |
+| 4.3 KYC del dueño | 🔴 sin hacer | RUT = "Falta" en el admin |
+| 4.1 OAuth Google · 4.4 Push | 🔴 sin hacer | |
+| **Extra (no estaba en el plan)** | ✅ hecho | **Back-office web admin** (dashboard, mapa, usuarios, facturas) |
+
+**Lectura honesta:** para un **beta gratis** (testers, plata de mentira) ya estás listo.
+Para **operación comercial real** faltan los bloqueantes 🔴: Wompi producción, factura DIAN
+real, legal/contable (T&C, Habeas Data, KYC) y confiabilidad (backups, tests).
+
+---
+
 ## Decisiones que TÚ debes tomar antes (no son código)
 
 Estas definen el diseño del resto. Conviene resolverlas con un contador/abogado:
