@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction,
                     PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
-                    Reservation, mask_email)
+                    Reservation, WalletTransaction, mask_email)
 from auth import get_current_user, SECRET_KEY, ALGORITHM
 from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA, MIN_WITHDRAW_COP
-from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner
+from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner, _wallet_balance_cents
 from state import connected_chargers
 import storage
 
@@ -307,6 +307,29 @@ async def commissions(period: str = "month", _: User = Depends(require_admin), d
     return {"period": period, "total_cop": total // 100, "by_owner": by_owner}
 
 
+# ── Wallet (saldo de conductores) ─────────────────────────────────────────────
+
+class WalletCreditBody(BaseModel):
+    amount_cop: int            # positivo = abono/bono; negativo = ajuste
+    note: str | None = None
+
+
+@router.post("/users/{user_id}/wallet-credit")
+async def wallet_credit(user_id: str, body: WalletCreditBody,
+                        _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Abona (bono de bienvenida) o ajusta el saldo de un conductor."""
+    u = await db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    if body.amount_cop == 0:
+        raise HTTPException(400, "El monto no puede ser 0")
+    db.add(WalletTransaction(user_id=user_id, type="BONUS", amount_cents=body.amount_cop * 100,
+                            description=body.note or "Crédito de Faro"))
+    await db.commit()
+    bal = await _wallet_balance_cents(db, user_id)
+    return {"ok": True, "balance_cop": bal // 100}
+
+
 # ── Usuarios ──────────────────────────────────────────────────────────────────
 
 async def _user_footprint(db: AsyncSession, user_id: str) -> dict:
@@ -328,9 +351,11 @@ async def list_users(_: User = Depends(require_admin), db: AsyncSession = Depend
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     out = []
     for u in result.scalars().all():
+        wallet = await _wallet_balance_cents(db, u.id) if u.role == "conductor" else 0
         out.append({
             "id": u.id, "name": u.name, "email": u.email, "role": u.role,
             "email_verified": u.email_verified,
+            "wallet_cop": wallet // 100,
             "created_at": u.created_at.isoformat() if u.created_at else None,
         })
     return out

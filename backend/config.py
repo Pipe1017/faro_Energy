@@ -31,6 +31,10 @@ SUBSCRIPTION_COP = int(os.getenv("SUBSCRIPTION_COP", "0"))
 # se crean ya verificados, así que esto solo afecta a registros nuevos sin confirmar.
 REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() == "true"
 
+# ── Wallet / saldo prepago del conductor ──────────────────────────────────────
+WALLET_TOPUP_DEFAULT_COP = int(os.getenv("WALLET_TOPUP_DEFAULT_COP", "50000"))  # recarga sugerida
+WALLET_MIN_TOPUP_COP     = int(os.getenv("WALLET_MIN_TOPUP_COP", "5000"))       # recarga mínima
+
 MIN_WITHDRAW_COP        = 1_000    # retiro manual mínimo del dueño
 SETTLEMENT_DAYS         = (5, 20)  # días de corte: giro automático (siguiente día hábil Colombia)
 SETTLE_CHECK_INTERVAL   = 3600     # el job revisa cada hora si hoy es día de giro

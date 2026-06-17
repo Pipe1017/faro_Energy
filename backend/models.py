@@ -509,3 +509,29 @@ class ChargerRating(Base):
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
     good: Mapped[bool] = mapped_column(Boolean)   # True = 👍, False = 👎
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ── Wallet (saldo prepago del conductor) ──────────────────────────────────────
+# Modelo nuevo: el conductor recarga saldo (1 transacción Wompi) y las cargas se
+# descuentan de aquí — neutraliza el costo fijo de la pasarela por sesión.
+# Saldo = SUM(amount_cents). Firmado: TOPUP/BONUS/REFUND > 0, CHARGE < 0.
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
+    type: Mapped[str] = mapped_column(String)            # TOPUP | CHARGE | REFUND | BONUS
+    amount_cents: Mapped[int] = mapped_column(Integer)   # firmado
+    reference: Mapped[str | None] = mapped_column(String, nullable=True)
+    wompi_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=True)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id, "type": self.type, "amount_cop": self.amount_cents // 100,
+            "description": self.description, "session_id": self.session_id,
+            "created_at": self.created_at.isoformat(),
+        }

@@ -16,7 +16,8 @@ from ocpp.v16.enums import Action, RegistrationStatus, AvailabilityType
 from database import AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, Invoice)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, Invoice,
+                    WalletTransaction)
 import wompi as wompi_svc
 import emailer
 from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
@@ -496,6 +497,15 @@ async def _faro_balance_cents(db: AsyncSession, account: str) -> int:
     return int(result.scalar() or 0)
 
 
+async def _wallet_balance_cents(db: AsyncSession, user_id: str) -> int:
+    """Saldo prepago del conductor = suma de sus movimientos de wallet."""
+    result = await db.execute(
+        select(func.coalesce(func.sum(WalletTransaction.amount_cents), 0))
+        .where(WalletTransaction.user_id == user_id)
+    )
+    return int(result.scalar() or 0)
+
+
 async def _settle_owner(db: AsyncSession, owner_id: str, min_cop: int) -> dict:
     """Dispersa el saldo acumulado del dueño hacia su cuenta (Nequi o banco).
     Registra DisbursementRecord + asiento DISBURSEMENT en el ledger.
@@ -730,6 +740,24 @@ async def _execute_charge(db: AsyncSession, pc: PendingCharge):
             logger.error(f"Cobro sesión #{pc.session_id} agotó reintentos — requiere revisión manual: {err[:120]}")
         else:
             logger.warning(f"Cobro sesión #{pc.session_id} falló (intento {pc.attempts}) — reintento en {delay}s")
+
+    # 0) Modo WALLET: el conductor paga con su saldo prepago (sin Wompi por sesión)
+    if pay_tx.payment_type == "WALLET":
+        if pc.amount_cents <= 0:
+            pc.status = "DONE"; pay_tx.status = "VOID"; return
+        bal = await _wallet_balance_cents(db, pay_tx.user_id)
+        if bal < pc.amount_cents:
+            pc.status = "UNPAID"; pay_tx.status = "UNPAID"
+            await _notify_unpaid(db, pc)
+            logger.warning(f"Cobro sesión #{pc.session_id}: saldo insuficiente "
+                           f"(${bal // 100:,} < ${pc.amount_cents // 100:,}) → UNPAID")
+            return
+        db.add(WalletTransaction(user_id=pay_tx.user_id, type="CHARGE",
+                                amount_cents=-pc.amount_cents, session_id=pc.session_id,
+                                description=f"Carga sesión #{pc.session_id}"))
+        pay_tx.amount_cents = pc.amount_cents
+        await _settle_captured(db, pc, pay_tx)
+        return
 
     # 1) Ya existe una transacción en Wompi — solo confirmar su estado final
     if pc.wompi_tx_id:

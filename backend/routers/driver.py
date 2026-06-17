@@ -14,7 +14,8 @@ from ocpp.v16.enums import AvailabilityType
 from database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerRating)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerRating,
+                    WalletTransaction)
 from auth import get_current_user, hash_password, verify_password, create_token
 import wompi as wompi_svc
 import sim as sim_mgr
@@ -23,7 +24,7 @@ from state import connected_chargers
 from engine import (_finalize_session, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
-                    _mark_offline_after_grace, fulfill_reservation_if_any)
+                    _mark_offline_after_grace, fulfill_reservation_if_any, _wallet_balance_cents)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -144,6 +145,67 @@ async def rate_session(session_id: int, body: RateBody,
     await db.commit()
     return {"ok": True, "good": body.good,
             "rating_up": charger.rating_up or 0, "rating_down": charger.rating_down or 0}
+
+
+# ── WALLET / SALDO PREPAGO (conductor) ────────────────────────────────────────
+
+class TopupBody(BaseModel):
+    amount_cop: int
+    payment_method_id: str
+
+
+@router.get("/wallet")
+async def my_wallet(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    bal = await _wallet_balance_cents(db, current_user.id)
+    movs = await db.execute(
+        select(WalletTransaction).where(WalletTransaction.user_id == current_user.id)
+        .order_by(WalletTransaction.created_at.desc()).limit(50)
+    )
+    return {
+        "balance_cop": bal // 100,
+        "default_topup_cop": WALLET_TOPUP_DEFAULT_COP,
+        "min_topup_cop": WALLET_MIN_TOPUP_COP,
+        "movements": [m.to_dict() for m in movs.scalars().all()],
+    }
+
+
+@router.post("/wallet/topup")
+async def wallet_topup(body: TopupBody, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Recarga el saldo con UNA transacción Wompi (cargo a la tarjeta guardada)."""
+    if body.amount_cop < WALLET_MIN_TOPUP_COP:
+        raise HTTPException(400, f"La recarga mínima es ${WALLET_MIN_TOPUP_COP:,} COP")
+    method = await db.get(PaymentMethod, body.payment_method_id)
+    if not method or method.user_id != current_user.id:
+        raise HTTPException(404, "Método de pago no encontrado")
+    if not method.wompi_payment_source_id:
+        raise HTTPException(400, "Esta tarjeta no es válida. Elimínala y vuélvela a agregar.")
+
+    amount_cents = body.amount_cop * 100
+    reference = f"wallet-{current_user.id[:8]}-{int(datetime.now().timestamp())}"
+    try:
+        resp = await wompi_svc.capture_preauth(method.wompi_payment_source_id, amount_cents, current_user.email, reference)
+    except Exception as e:
+        logger.warning(f"Recarga wallet {reference}: error Wompi {e}")
+        raise HTTPException(502, "No pudimos procesar la recarga. Intenta de nuevo.")
+
+    data = resp.get("data", {})
+    status = data.get("status") or ""
+    wid = data.get("id")
+    waited = 0
+    while status == "PENDING" and wid and waited < 6:
+        await asyncio.sleep(1); waited += 1
+        data = (await wompi_svc.get_transaction(str(wid))).get("data", {})
+        status = data.get("status") or ""
+
+    if status != "APPROVED":
+        raise HTTPException(402, f"La recarga no fue aprobada ({status or 'sin respuesta'}). Verifica tu tarjeta.")
+
+    db.add(WalletTransaction(user_id=current_user.id, type="TOPUP", amount_cents=amount_cents,
+                            reference=reference, wompi_id=str(wid) if wid else None,
+                            description=f"Recarga de saldo ${body.amount_cop:,} COP"))
+    await db.commit()
+    bal = await _wallet_balance_cents(db, current_user.id)
+    return {"ok": True, "amount_cop": body.amount_cop, "balance_cop": bal // 100}
 
 
 # ── MÉTODOS DE PAGO (conductor) ───────────────────────────────────────────────
@@ -276,7 +338,7 @@ async def set_default_method(method_id: str, current_user: User = Depends(get_cu
 
 class InitiatePaymentBody(BaseModel):
     charger_id: str
-    payment_method_id: str
+    payment_method_id: str | None = None   # ya no se usa en modo wallet (se cobra del saldo)
 
 
 @router.post("/payments/initiate")
@@ -285,15 +347,12 @@ async def initiate_payment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    method = await db.get(PaymentMethod, body.payment_method_id)
-    if not method or method.user_id != current_user.id:
-        raise HTTPException(404, "Método de pago no encontrado")
-
+    """Modo WALLET: arranca la carga contra el SALDO prepago del conductor. El cobro
+    exacto se descuenta del saldo al terminar (sin transacción Wompi por sesión)."""
     charger = await db.get(Charger, body.charger_id)
     if not charger:
         raise HTTPException(400, "Cargador no disponible")
     if charger.status == "Reserved":
-        # Solo quien tiene la separación activa puede arrancar un cargador reservado
         held = await db.execute(
             select(Reservation).where(
                 Reservation.charger_id == body.charger_id,
@@ -306,81 +365,50 @@ async def initiate_payment(
     elif charger.status != "Available":
         raise HTTPException(400, "Cargador no disponible")
 
-    if not method.wompi_payment_source_id:
-        raise HTTPException(400, "Esta tarjeta no tiene un payment_source válido. Elimínala y vuélvela a agregar.")
-
-    # Bloquear si tiene pagos fallidos pendientes
+    # Bloquear si quedó un cobro sin pagar (saldo se quedó corto en una sesión previa)
     unpaid = await db.execute(
         select(PaymentTransaction)
-        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status.in_(["UNPAID", "PROCESSING"]))
+        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status == "UNPAID")
         .limit(1)
     )
     if unpaid.scalars().first():
-        raise HTTPException(402, "Tienes un cobro pendiente de una sesión anterior. Págalo desde 'Mi uso' para volver a cargar.")
+        raise HTTPException(402, "Tienes un cobro sin pagar de una sesión anterior. Recarga saldo desde 'Mi saldo'.")
 
-    reference     = f"cpo-{current_user.id[:8]}-{body.charger_id}-{int(datetime.now().timestamp())}"
-    guarantee_cop = calc_preauth_cop(charger)
+    # Verificar saldo suficiente (estimado de la carga)
+    estimate = calc_preauth_cop(charger)
+    balance = await _wallet_balance_cents(db, current_user.id)
+    if balance < estimate:
+        raise HTTPException(402, f"Saldo insuficiente. Recarga al menos ${estimate:,} COP para cargar aquí.")
 
-    # Pre-autorización real: retiene la garantía ANTES de arrancar la carga.
-    # Si el banco rechaza, el cargador nunca arranca — imposible quedar UNPAID
-    # por fondos insuficientes. El cobro exacto se captura al terminar.
-    preauth_id = None
-    pstatus    = ""
-    try:
-        resp  = await wompi_svc.preauthorize_card(guarantee_cop * 100, current_user.email, method.wompi_payment_source_id)
-        pdata = resp.get("data", {})
-        preauth_id, pstatus = pdata.get("id"), (pdata.get("status") or "")
-        # Espera corta a que la retención quede disponible (sandbox: 1-2s)
-        waited = 0
-        while preauth_id and pstatus == "PROCESSING" and waited < 6:
-            await asyncio.sleep(1)
-            waited += 1
-            pdata   = (await wompi_svc.get_payment_source(preauth_id)).get("data", {})
-            pstatus = pdata.get("status") or ""
-    except Exception as e:
-        logger.warning(f"Pre-auth no disponible ({e}) — autorizando sin retención")
-
-    if pstatus in ("DECLINED", "ERROR", "VOIDED"):
-        raise HTTPException(402, "Tu banco rechazó la retención de garantía. Verifica fondos o usa otra tarjeta.")
-    if preauth_id is None:
-        # Feature de pre-auth no activa en esta cuenta Wompi — flujo degradado:
-        # se autoriza con la tarjeta guardada y el cobro único ocurre al final.
-        logger.warning(f"Pre-auth no activa en Wompi — {reference} autorizado sin retención de garantía")
-
-    status = "APPROVED" if (preauth_id is None or pstatus == "AVAILABLE") else "PENDING"
+    reference = f"wlt-{current_user.id[:8]}-{body.charger_id}-{int(datetime.now().timestamp())}"
     payment = PaymentTransaction(
         charger_id=body.charger_id,
         user_id=current_user.id,
         reference=reference,
-        wompi_payment_source_id=method.wompi_payment_source_id,
-        wompi_preauth_id=preauth_id,
-        wompi_id=None,
-        amount_cents=0,      # se actualiza al capturar el cobro real
-        status=status,
-        payment_type="CARD",
+        amount_cents=0,            # se fija al cobrar (débito del saldo)
+        status="APPROVED",
+        payment_type="WALLET",
     )
     db.add(payment)
     await db.commit()
 
-    if status == "APPROVED":
-        charger_conn = connected_chargers.get(body.charger_id)
-        if charger_conn:
+    charger_conn = connected_chargers.get(body.charger_id)
+    if charger_conn:
+        try:
             await charger_conn.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.tag))
-        # Si venía de una separación: cúmplela (captura la cuota fija, libera el resto)
-        await fulfill_reservation_if_any(db, current_user.id, body.charger_id)
-        await db.commit()
-        logger.info(
-            f"Sesión autorizada para {current_user.email} en {body.charger_id} — "
-            + (f"garantía ${guarantee_cop:,} COP retenida (preauth#{preauth_id})" if preauth_id else f"sin retención, ps#{method.wompi_payment_source_id}")
-        )
-    else:
-        logger.info(f"Pre-auth {reference} en PROCESSING — la app hará polling hasta confirmar")
+        except Exception as e:
+            logger.warning(f"RemoteStart falló en {body.charger_id}: {e}")
+            raise HTTPException(502, "No se pudo iniciar la carga en el cargador. Intenta de nuevo.")
+    # Si venía de una separación: cúmplela (captura la cuota fija, libera el resto)
+    await fulfill_reservation_if_any(db, current_user.id, body.charger_id)
+    await db.commit()
+    logger.info(f"Sesión WALLET autorizada para {current_user.email} en {body.charger_id} (saldo ${balance // 100:,} COP)")
 
     return {
-        "reference":     reference,
-        "status":        status,
-        "payment_id":    payment.id,
-        "guarantee_cop": guarantee_cop if preauth_id else 0,
+        "reference":   reference,
+        "status":      "APPROVED",
+        "payment_id":  payment.id,
+        "balance_cop": balance // 100,
     }
 
 
