@@ -356,6 +356,11 @@ async def initiate_payment(
     charger = await db.get(Charger, body.charger_id)
     if not charger:
         raise HTTPException(400, "Cargador no disponible")
+    # Bloquear si el dueño tiene la mensualidad de plataforma suspendida
+    if charger.owner_id:
+        owner = await db.get(User, charger.owner_id)
+        if owner and not owner.subscription_active:
+            raise HTTPException(400, "Cargador no disponible")
     if charger.status == "Reserved":
         held = await db.execute(
             select(Reservation).where(

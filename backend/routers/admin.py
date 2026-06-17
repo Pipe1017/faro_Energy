@@ -22,7 +22,8 @@ from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransac
 from auth import get_current_user, SECRET_KEY, ALGORITHM
 from config import (ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, BOGOTA,
                     MIN_WITHDRAW_COP, PLATFORM_MARGIN, IVA_RATE, monthly_fee_cop)
-from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner, _wallet_balance_cents
+from engine import (_faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner,
+                    _wallet_balance_cents, bill_owner_subscription, _owner_card)
 from state import connected_chargers
 import storage
 
@@ -238,10 +239,11 @@ async def owner_detail(owner_id: str, _: User = Depends(require_admin), db: Asyn
     current_period = datetime.now(BOGOTA).strftime("%Y-%m")
     sub_charged = (await db.execute(
         select(LedgerEntry.id).where(
-            LedgerEntry.owner_id == owner_id, LedgerEntry.type == "SUBSCRIPTION",
-            LedgerEntry.description.like(f"%[{current_period}]%"),
+            LedgerEntry.account == ACCT_FARO_REVENUE, LedgerEntry.type == "SUBSCRIPTION_INCOME",
+            LedgerEntry.description.like(f"%[{current_period}]%{o.email}%"),
         )
     )).first() is not None
+    has_card = await _owner_card(db, owner_id) is not None
     invoices = (await db.execute(
         select(Invoice).where(Invoice.owner_id == owner_id).order_by(Invoice.created_at.desc()).limit(50)
     )).scalars().all()
@@ -256,6 +258,9 @@ async def owner_detail(owner_id: str, _: User = Depends(require_admin), db: Asyn
         "monthly_fee_cop": monthly_fee_cop(len(chargers)),   # mensualidad de plataforma
         "current_period": current_period,
         "subscription_charged": sub_charged,                 # ¿ya se cobró el mes actual?
+        "subscription_active": o.subscription_active,        # ¿cargadores habilitados?
+        "subscription_paid_until": o.subscription_paid_until.isoformat() if o.subscription_paid_until else None,
+        "has_card": has_card,                                # ¿tiene tarjeta para cobrar?
         "disbursement_account": acc.to_dict() if acc else None,
         "chargers": [{"id": c.id, "location": c.location, "power_kw": c.power_kw,
                       "price": c.price_per_kwh, "online": c.id in connected_chargers} for c in chargers],
@@ -304,52 +309,31 @@ class ChargeSubscriptionBody(BaseModel):
 @router.post("/owners/{owner_id}/charge-subscription")
 async def charge_subscription(owner_id: str, body: ChargeSubscriptionBody,
                               _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """Cobra la mensualidad de plataforma del dueño (un mes). Modelo A: Faro factura
-    la mensualidad al dueño. Crea el débito en el ledger del dueño + el ingreso de Faro
-    + IVA por girar a la DIAN + la factura SUBSCRIPTION. Idempotente por mes."""
+    """Cobra la mensualidad de plataforma a la TARJETA del dueño (Wompi).
+    APROBADA → activa sus cargadores hasta el próximo mes. RECHAZADA → los suspende.
+    El cobro, las bolsas y la factura los maneja engine.bill_owner_subscription."""
     o = await db.get(User, owner_id)
     if not o or o.role != "owner":
         raise HTTPException(404, "Dueño no encontrado")
-    n = int((await db.execute(select(func.count(Charger.id)).where(Charger.owner_id == owner_id))).scalar() or 0)
-    if n == 0:
-        raise HTTPException(400, "El dueño no tiene cargadores: no hay mensualidad que cobrar")
-
-    period = body.period or datetime.now(BOGOTA).strftime("%Y-%m")
-    fee = monthly_fee_cop(n)                  # COP, total del mes
-    iva = round(fee * IVA_RATE)               # IVA de la mensualidad
-    total = fee + iva
-
     async with _settle_lock(owner_id):
-        dup = await db.execute(
-            select(LedgerEntry.id).where(
-                LedgerEntry.owner_id == owner_id,
-                LedgerEntry.type == "SUBSCRIPTION",
-                LedgerEntry.description.like(f"%[{period}]%"),
-            )
-        )
-        if dup.first():
-            raise HTTPException(409, f"La mensualidad de {period} ya fue cobrada a este dueño")
+        return await bill_owner_subscription(db, o, body.period)
 
-        desc = f"Mensualidad plataforma [{period}] — {n} cargador(es)"
-        # Dueño: débito (mensualidad + IVA) → reduce lo que Faro le debe
-        db.add(LedgerEntry(owner_id=owner_id, type="SUBSCRIPTION",
-                           amount_cents=-total * 100, description=desc))
-        # Faro: ingreso de mensualidad (bolsa revenue:faro)
-        db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_REVENUE, type="SUBSCRIPTION_INCOME",
-                           amount_cents=fee * 100, description=f"{desc} — {o.email}"))
-        # Faro: IVA recaudado (bolsa tax:iva, por girar a la DIAN)
-        if iva > 0:
-            db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_IVA, type="IVA_COLLECTED",
-                               amount_cents=iva * 100, description=f"IVA mensualidad [{period}] — {o.email}"))
-        # Factura SUBSCRIPTION (Faro → dueño), el worker la emite
-        db.add(Invoice(kind="SUBSCRIPTION", issuer="faro", owner_id=owner_id,
-                       recipient_user_id=owner_id, amount_cents=fee * 100,
-                       iva_cents=iva * 100, total_cents=total * 100))
-        await db.commit()
 
-    new_balance = await _owner_balance_cents(db, owner_id)
-    return {"ok": True, "period": period, "chargers": n, "fee_cop": fee,
-            "iva_cop": iva, "total_cop": total, "new_balance_cop": new_balance // 100}
+class SubscriptionStatusBody(BaseModel):
+    active: bool   # True = reactivar manualmente; False = rechazar/suspender manualmente
+
+
+@router.post("/owners/{owner_id}/subscription-status")
+async def set_subscription_status(owner_id: str, body: SubscriptionStatusBody,
+                                  _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Activa/suspende manualmente al dueño (sin cobrar). Suspender oculta y bloquea
+    sus cargadores; reactivar los vuelve a habilitar hasta la próxima mensualidad."""
+    o = await db.get(User, owner_id)
+    if not o or o.role != "owner":
+        raise HTTPException(404, "Dueño no encontrado")
+    o.subscription_active = body.active
+    await db.commit()
+    return {"ok": True, "subscription_active": o.subscription_active}
 
 
 @router.get("/commissions")

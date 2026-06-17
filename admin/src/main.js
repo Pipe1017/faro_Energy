@@ -340,20 +340,33 @@ function renderOwnerDetail(view) {
       ${card('Recaudado', cop(s.recaudado_cop), 'recargas cobradas')}
       ${card('− Comisión Faro', cop(s.comision_cop))}
       ${card('− Pasarela', cop(s.pasarela_cop))}
-      ${card('− Mensualidad', cop(s.mensualidad_cop))}
       ${card('Ya pagado', cop(s.girado_cop), 'dispersado')}
       ${card('SALDO POR PAGAR', cop(s.saldo_cop), '', 'accent')}
     </div>
 
     <div class="section-title">Mensualidad de plataforma</div>
-    <div class="card" style="max-width:420px;">
-      <div class="muted" style="font-size:.85rem;margin-bottom:6px;">
-        ${o.chargers.length} cargador(es) · ${cop(o.monthly_fee_cop ?? 0)} / mes · periodo ${o.current_period || ''}
-        ${o.subscription_charged ? ' · <span class="badge ok">cobrada este mes</span>' : ''}
+    <div class="card" style="max-width:460px;">
+      <div style="margin-bottom:8px;">
+        Estado: ${o.subscription_active
+          ? '<span class="badge ok">Activa — cargadores habilitados</span>'
+          : '<span class="badge danger">Suspendida — cargadores ocultos</span>'}
       </div>
-      <button class="mini" id="sub" ${(o.subscription_charged || (o.chargers.length === 0)) ? 'disabled' : ''}>
-        ${o.subscription_charged ? 'Mensualidad ya cobrada' : `Cobrar mensualidad de ${cop(o.monthly_fee_cop ?? 0)}`}
-      </button>
+      <div class="muted" style="font-size:.85rem;margin-bottom:8px;">
+        ${o.chargers.length} cargador(es) · ${cop(o.monthly_fee_cop ?? 0)} / mes + IVA · periodo ${o.current_period || ''}
+        ${o.subscription_charged ? ' · <span class="badge ok">cobrada este mes</span>' : ''}<br/>
+        ${o.has_card
+          ? 'Tarjeta asociada ✓'
+          : '<span class="badge danger">El dueño no tiene tarjeta — debe asociarla en la app</span>'}
+        ${o.subscription_paid_until ? ` · cubierta hasta ${fmtTime(o.subscription_paid_until)}` : ''}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="mini" id="sub" ${(o.subscription_charged || o.chargers.length === 0 || !o.has_card) ? 'disabled' : ''}>
+          ${o.subscription_charged ? 'Mensualidad ya cobrada' : `Cobrar a la tarjeta ${cop((o.monthly_fee_cop ?? 0))} + IVA`}
+        </button>
+        ${o.subscription_active
+          ? '<button class="mini" id="suspend" style="background:none;color:#b91c1c;border:1px solid #e7c9c4;">Suspender manual</button>'
+          : '<button class="mini" id="reactivate">Reactivar manual</button>'}
+      </div>
     </div>
 
     <div class="section-title">Pago al dueño</div>
@@ -398,19 +411,35 @@ function renderOwnerDetail(view) {
   if (payBtn) payBtn.addEventListener('click', () => openPayModal(o));
   const subBtn = document.getElementById('sub');
   if (subBtn && !subBtn.disabled) subBtn.addEventListener('click', () => chargeSubscription(o));
+  const suspendBtn = document.getElementById('suspend');
+  if (suspendBtn) suspendBtn.addEventListener('click', () => setSubscription(o, false));
+  const reactivateBtn = document.getElementById('reactivate');
+  if (reactivateBtn) reactivateBtn.addEventListener('click', () => setSubscription(o, true));
 }
 
 function chargeSubscription(o) {
   if (!confirm(
-    `Cobrar la mensualidad de ${o.current_period} a ${o.name}?\n\n` +
+    `Cobrar la mensualidad de ${o.current_period} a la tarjeta de ${o.name}?\n\n` +
     `${o.chargers.length} cargador(es) → ${cop(o.monthly_fee_cop ?? 0)} + IVA.\n` +
-    `Se descuenta de su saldo y se emite la factura.`)) return;
+    `Si la tarjeta es aprobada se habilitan los cargadores; si es rechazada se suspenden.`)) return;
   api(`/admin/owners/${o.id}/charge-subscription`, {
     method: 'POST', body: JSON.stringify({}),
   }).then((r) => {
-    alert(`Mensualidad ${r.period} cobrada: ${cop(r.fee_cop)} + IVA ${cop(r.iva_cop)} = ${cop(r.total_cop)}.\nSaldo nuevo del dueño: ${cop(r.new_balance_cop)}.`);
+    if (r.ok) alert(`Mensualidad ${r.period} cobrada: ${cop(r.fee_cop)} + IVA ${cop(r.iva_cop)} = ${cop(r.total_cop)}.\nCargadores habilitados.`);
+    else alert(`La tarjeta fue rechazada (${r.status}). El dueño quedó SUSPENDIDO y sus cargadores ocultos hasta que actualice la tarjeta.`);
     return api(`/admin/owners/${o.id}`);
   }).then((d) => { state.ownerDetail = d; renderTab(); })
+    .catch((err) => alert(err.message));
+}
+
+function setSubscription(o, active) {
+  const verb = active ? 'reactivar' : 'suspender';
+  if (!confirm(`¿Seguro que quieres ${verb} a ${o.name}?\n\n` +
+    (active ? 'Sus cargadores volverán a aparecer en el mapa.' : 'Sus cargadores se ocultarán y no podrán cargar.'))) return;
+  api(`/admin/owners/${o.id}/subscription-status`, {
+    method: 'POST', body: JSON.stringify({ active }),
+  }).then(() => api(`/admin/owners/${o.id}`))
+    .then((d) => { state.ownerDetail = d; renderTab(); })
     .catch((err) => alert(err.message));
 }
 

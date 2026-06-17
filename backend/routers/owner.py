@@ -315,6 +315,27 @@ async def my_events(current_user: User = Depends(get_current_user), db: AsyncSes
     }
 
 
+@router.get("/my-subscription")
+async def my_subscription(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Estado de la mensualidad de plataforma del dueño (para mostrar en la app)."""
+    n = int((await db.execute(
+        select(func.count(Charger.id)).where(Charger.owner_id == current_user.id)
+    )).scalar() or 0)
+    card = (await db.execute(
+        select(PaymentMethod).where(
+            PaymentMethod.user_id == current_user.id,
+            PaymentMethod.wompi_payment_source_id.isnot(None),
+        ).limit(1)
+    )).scalars().first()
+    return {
+        "active": current_user.subscription_active,
+        "paid_until": current_user.subscription_paid_until.isoformat() if current_user.subscription_paid_until else None,
+        "chargers": n,
+        "monthly_fee_cop": monthly_fee_cop(n),
+        "has_card": card is not None,
+    }
+
+
 @router.post("/my-events/read")
 async def mark_events_read(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(

@@ -26,7 +26,9 @@ from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
                     RESERVE_MINUTES, RESERVE_GRACE_MINUTES, RESERVE_FEE_FACTOR,
                     RESERVE_FEE_MIN_COP, RESERVE_FEE_CAP_COP, RESERVE_CONVENIENCE_COP,
                     RESERVE_CHECK_INTERVAL,
-                    ACCT_FARO_REVENUE, ACCT_FARO_IVA, GATEWAY_BORNE_BY, SUBSCRIPTION_COP)
+                    ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, GATEWAY_BORNE_BY,
+                    SUBSCRIPTION_COP, WOMPI_FEE_PCT, WOMPI_FEE_FIXED_COP, monthly_fee_cop,
+                    AUTO_SUBSCRIPTION_BILLING, SUBSCRIPTION_CHECK_INTERVAL)
 from state import connected_chargers
 
 logger = logging.getLogger(__name__)
@@ -468,6 +470,146 @@ async def _invoice_worker():
         except Exception as e:
             logger.warning(f"invoice_worker: {e}")
         await asyncio.sleep(20)
+
+
+# ── MENSUALIDAD DE PLATAFORMA (cobro a la tarjeta del dueño) ──────────────────
+
+def _next_period_start(now: datetime) -> datetime:
+    """Primer día del mes siguiente (hora Bogotá) — hasta cuándo queda cubierta."""
+    if now.month == 12:
+        return now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def _owner_card(db: AsyncSession, owner_id: str) -> PaymentMethod | None:
+    """Tarjeta del dueño para cobrar la mensualidad (la default, o cualquiera con source)."""
+    rows = (await db.execute(
+        select(PaymentMethod).where(
+            PaymentMethod.user_id == owner_id,
+            PaymentMethod.wompi_payment_source_id.isnot(None),
+        ).order_by(PaymentMethod.is_default.desc())
+    )).scalars().all()
+    return rows[0] if rows else None
+
+
+async def bill_owner_subscription(db: AsyncSession, owner: User, period: str | None = None) -> dict:
+    """Cobra la mensualidad de plataforma a la TARJETA del dueño (Wompi).
+
+    APROBADA  → ingreso Faro + IVA + costo pasarela + factura SUBSCRIPTION; activa
+                los cargadores (subscription_active=True) hasta el próximo mes.
+    RECHAZADA → suspende al dueño (subscription_active=False) → sus cargadores se
+                ocultan/bloquean. NO registra ingreso.
+    Idempotente por mes: no recobra un period ya cobrado con éxito.
+    Usado por el back-office (manual) y por el worker (automático).
+    """
+    period = period or datetime.now(BOGOTA).strftime("%Y-%m")
+    n = int((await db.execute(
+        select(func.count(Charger.id)).where(Charger.owner_id == owner.id)
+    )).scalar() or 0)
+    if n == 0:
+        raise HTTPException(400, "El dueño no tiene cargadores: no hay mensualidad que cobrar")
+
+    # Idempotencia: ¿ya hay un ingreso de mensualidad de este mes para este dueño?
+    dup = (await db.execute(
+        select(LedgerEntry.id).where(
+            LedgerEntry.account == ACCT_FARO_REVENUE,
+            LedgerEntry.type == "SUBSCRIPTION_INCOME",
+            LedgerEntry.description.like(f"%[{period}]%{owner.email}%"),
+        )
+    )).first()
+    if dup:
+        raise HTTPException(409, f"La mensualidad de {period} ya fue cobrada a este dueño")
+
+    card = await _owner_card(db, owner.id)
+    if not card:
+        raise HTTPException(400, "El dueño no tiene una tarjeta asociada para cobrar la mensualidad")
+
+    fee = monthly_fee_cop(n)
+    iva = round(fee * IVA_RATE)
+    total = fee + iva
+    amount_cents = total * 100
+    reference = f"sub-{owner.id[:8]}-{period}-{int(datetime.now().timestamp())}"
+
+    # Cobro a la tarjeta (Wompi)
+    status = ""
+    try:
+        resp = await wompi_svc.capture_preauth(card.wompi_payment_source_id, amount_cents, owner.email, reference)
+        data = resp.get("data", {})
+        status = data.get("status") or ""
+        wid = data.get("id")
+        waited = 0
+        while status == "PENDING" and wid and waited < 6:
+            await asyncio.sleep(1); waited += 1
+            data = (await wompi_svc.get_transaction(str(wid))).get("data", {})
+            status = data.get("status") or ""
+    except Exception as e:
+        logger.warning(f"Mensualidad {reference}: error Wompi {e}")
+        status = "ERROR"
+
+    if status != "APPROVED":
+        # Transacción rechazada → suspender y ocultar/bloquear sus cargadores
+        owner.subscription_active = False
+        await db.commit()
+        _notify_owner(db, owner.id, "PAYMENT_UNPAID",
+                      "No pudimos cobrar la mensualidad de plataforma. Tus cargadores quedaron "
+                      "suspendidos hasta que actualices tu tarjeta.")
+        await db.commit()
+        return {"ok": False, "status": status or "RECHAZADA", "period": period,
+                "chargers": n, "fee_cop": fee, "iva_cop": iva, "total_cop": total,
+                "subscription_active": False}
+
+    # Aprobada → ingreso de Faro, IVA, costo de pasarela, factura, reactivar
+    wid = data.get("id")
+    desc = f"Mensualidad plataforma [{period}] — {owner.email} ({n} cargador/es)"
+    db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_REVENUE, type="SUBSCRIPTION_INCOME",
+                       amount_cents=fee * 100, description=desc))
+    if iva > 0:
+        db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_IVA, type="IVA_COLLECTED",
+                           amount_cents=iva * 100, description=f"IVA mensualidad [{period}] — {owner.email}"))
+    fee_cents = round((amount_cents * WOMPI_FEE_PCT + WOMPI_FEE_FIXED_COP * 100) * (1 + IVA_RATE))
+    db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_GATEWAY, type="GATEWAY_COST",
+                       amount_cents=-fee_cents, description=f"Pasarela mensualidad [{period}] — {owner.email}"))
+    db.add(Invoice(kind="SUBSCRIPTION", issuer="faro", owner_id=owner.id,
+                   recipient_user_id=owner.id, amount_cents=fee * 100,
+                   iva_cents=iva * 100, total_cents=total * 100))
+
+    owner.subscription_active = True
+    owner.subscription_paid_until = _next_period_start(datetime.now(BOGOTA))
+    await db.commit()
+    logger.info(f"Mensualidad {period} cobrada a {owner.email}: ${total:,} (tx {wid})")
+    return {"ok": True, "status": "APPROVED", "period": period, "chargers": n,
+            "fee_cop": fee, "iva_cop": iva, "total_cop": total,
+            "subscription_active": True,
+            "paid_until": owner.subscription_paid_until.isoformat() if owner.subscription_paid_until else None}
+
+
+async def _subscription_billing_worker():
+    """[Automático — desactivado por defecto] Cobra la mensualidad a los dueños cuya
+    cobertura (subscription_paid_until) ya venció. Activar con AUTO_SUBSCRIPTION_BILLING=true.
+    Hoy el cobro es MANUAL desde el back-office; este worker es el placeholder listo."""
+    logger.info("Worker de mensualidad (automático) iniciado")
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                now = datetime.now(BOGOTA)
+                due = (await db.execute(
+                    select(User).where(
+                        User.role == "owner",
+                        (User.subscription_paid_until.is_(None)) | (User.subscription_paid_until <= now),
+                    )
+                )).scalars().all()
+                for owner in due:
+                    # solo dueños con cargadores y tarjeta; si no, se omiten
+                    try:
+                        async with _settle_lock(owner.id):
+                            await bill_owner_subscription(db, owner)
+                    except HTTPException as e:
+                        logger.info(f"Mensualidad auto omitida {owner.email}: {e.detail}")
+                    except Exception as e:
+                        logger.warning(f"Mensualidad auto {owner.email}: {e}")
+        except Exception as e:
+            logger.warning(f"subscription_billing_worker: {e}")
+        await asyncio.sleep(SUBSCRIPTION_CHECK_INTERVAL)
 
 
 # ── LIQUIDACIÓN AL DUEÑO ─────────────────────────────────────────────────────

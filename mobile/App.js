@@ -72,6 +72,7 @@ export default function App() {
   const [statsPeriod, setStatsPeriod]     = useState('week');   // today | week | month
   const [myStats, setMyStats]             = useState(null);
   const [ownerEvents, setOwnerEvents]     = useState(null);
+  const [mySubscription, setMySubscription] = useState(null);
   const [locationPicker, setLocationPicker] = useState(null); // { lat, lng, address }
   const locPickerTimeout                    = useRef(null);
   const [disbForm, setDisbForm]   = useState({ type:'NEQUI', phone:'', account_number:'', bank_code:'', account_type:'SAVINGS', holder_name:'', holder_id:'' });
@@ -375,11 +376,12 @@ export default function App() {
   useEffect(() => {
     if (!token) return;
     if (tab === 'negocio') {
-      fetchEarnings(); fetchDisbAccount();
+      fetchEarnings(); fetchDisbAccount(); fetchPaymentMethods();
       apiFetch('/my-disbursements', {}, token).then(setMyDisburses).catch(() => {});
       apiFetch('/my-balance', {}, token).then(setBalance).catch(() => {});
       apiFetch('/brand-profiles', {}, token).then(d => setBrandProfiles(d.profiles || [])).catch(() => {});
       apiFetch('/my-events', {}, token).then(setOwnerEvents).catch(() => {});
+      apiFetch('/my-subscription', {}, token).then(setMySubscription).catch(() => {});
     }
     if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
     if (tab === 'admin')   { apiFetch('/admin/summary', {}, token).then(setAdminSummary).catch(() => {}); }
@@ -474,6 +476,7 @@ export default function App() {
       setPaymentMethods(prev => [...prev, data]);
       setAddMethodModal(null);
       setCardForm({ number:'', exp:'', cvc:'', holder:'', nickname:'' });
+      if (isOwner) apiFetch('/my-subscription', {}, token).then(setMySubscription).catch(() => {});
       Alert.alert('Tarjeta agregada', data.nickname || data.display);
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSavingMethod(false); }
@@ -1419,6 +1422,61 @@ export default function App() {
               })}
             </View>
           )}
+
+          {/* Mensualidad de plataforma + tarjeta */}
+          <Text style={styles.sectionTitle}>Mi mensualidad de plataforma</Text>
+          <View style={[styles.card, { borderWidth: 1, borderColor: mySubscription && !mySubscription.active ? '#b91c1c' : T.cardBorder, marginBottom: 8 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <Feather name={mySubscription && !mySubscription.active ? 'alert-triangle' : 'check-circle'} size={16}
+                color={mySubscription && !mySubscription.active ? T.dangerText : T.green} />
+              <Text style={{ color: T.textPri, fontWeight: '700', fontSize: 14 }}>
+                {mySubscription && !mySubscription.active ? 'Cargadores suspendidos' : 'Cargadores activos'}
+              </Text>
+            </View>
+            <Text style={{ color: T.textMuted, fontSize: 12, lineHeight: 18 }}>
+              {mySubscription
+                ? `${mySubscription.chargers} cargador(es) · $ ${(mySubscription.monthly_fee_cop || 0).toLocaleString('es-CO')} / mes + IVA`
+                : 'Cargando…'}
+              {mySubscription?.paid_until ? `\nCubierta hasta ${new Date(mySubscription.paid_until).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}` : ''}
+            </Text>
+            {mySubscription && !mySubscription.has_card && (
+              <Text style={{ color: T.dangerText, fontSize: 12, marginTop: 6 }}>
+                Asocia una tarjeta para que podamos cobrar la mensualidad y mantener tus cargadores activos.
+              </Text>
+            )}
+            {mySubscription && !mySubscription.active && (
+              <Text style={{ color: T.dangerText, fontSize: 12, marginTop: 6 }}>
+                Tus cargadores no aparecen en el mapa. Se reactivan cuando se cobre la mensualidad.
+              </Text>
+            )}
+          </View>
+
+          {/* Tarjeta para la mensualidad */}
+          {paymentMethods.filter(m => m.type !== 'NEQUI').length === 0 ? (
+            <Text style={[styles.emptyHint, { marginBottom: 8 }]}>No tienes tarjeta asociada</Text>
+          ) : (
+            paymentMethods.filter(m => m.type !== 'NEQUI').map(m => (
+              <View key={m.id} style={[styles.card, m.is_default && { borderColor: T.green, borderWidth: 1 }]}>
+                <View style={styles.cardHeader}>
+                  <Feather name="credit-card" size={16} color={m.is_default ? T.green : T.textMuted} style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.chargerId, { fontSize: 14 }]}>{m.nickname || m.display}</Text>
+                    {m.nickname && <Text style={{ color: T.textMuted, fontSize: 11, marginTop: 1 }}>{m.display}</Text>}
+                  </View>
+                  <TouchableOpacity onPress={() => Alert.alert('Eliminar', `¿Eliminar ${m.nickname || m.display}?`, [
+                    { text: 'Eliminar', style: 'destructive', onPress: async () => { await apiFetch(`/payment-methods/${m.id}`, { method: 'DELETE' }, token); fetchPaymentMethods(); apiFetch('/my-subscription', {}, token).then(setMySubscription).catch(() => {}); }},
+                    { text: 'Cancelar' }
+                  ])} style={{ padding: 4 }}>
+                    <Feather name="trash-2" size={14} color={T.dangerText} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+          <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginBottom: 16 }]} onPress={() => setAddMethodModal('card')}>
+            <Feather name="credit-card" size={14} color="#fdfbf7" />
+            <Text style={styles.btnText}>Agregar tarjeta</Text>
+          </TouchableOpacity>
 
           {/* P&L completo */}
           {earnings ? (

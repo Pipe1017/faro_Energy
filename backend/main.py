@@ -74,6 +74,8 @@ async def startup():
         ("CREATE UNIQUE INDEX IF NOT EXISTS uq_user_tag ON users (tag)",                              "índice único de tag"),
         ("ALTER TABLE disbursement_records ADD COLUMN method TEXT DEFAULT 'WOMPI'",                   "method en disbursement_records"),
         ("ALTER TABLE disbursement_records ADD COLUMN note TEXT",                                     "note en disbursement_records"),
+        ("ALTER TABLE users ADD COLUMN subscription_active BOOLEAN DEFAULT TRUE",                     "subscription_active en users"),
+        ("ALTER TABLE users ADD COLUMN subscription_paid_until TIMESTAMP",                            "subscription_paid_until en users"),
     ]:
         try:
             async with engine.begin() as conn:
@@ -191,6 +193,16 @@ async def startup():
         logger.info("Pago automático a dueños: ACTIVADO (días 5/20)")
     else:
         logger.info("Pago automático a dueños: DESACTIVADO — pagos manuales desde el back-office")
+
+    # Cobro automático de la mensualidad (placeholder listo: AUTO_SUBSCRIPTION_BILLING)
+    from config import AUTO_SUBSCRIPTION_BILLING
+    if AUTO_SUBSCRIPTION_BILLING:
+        from engine import _subscription_billing_worker
+        asyncio.create_task(_subscription_billing_worker())
+        logger.info("Cobro automático de mensualidad: ACTIVADO")
+    else:
+        logger.info("Cobro automático de mensualidad: DESACTIVADO — cobro manual desde el back-office")
+
     asyncio.create_task(_offline_watcher())
 
     # Vencimiento de separaciones (no-show → multa al dueño)

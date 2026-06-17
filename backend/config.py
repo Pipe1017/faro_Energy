@@ -54,6 +54,13 @@ SETTLE_CHECK_INTERVAL   = 3600     # el job revisa cada hora si hoy es día de g
 # manualmente desde el back-office. Activar con AUTO_SETTLEMENT=true.
 AUTO_SETTLEMENT         = os.getenv("AUTO_SETTLEMENT", "false").lower() == "true"
 
+# Cobro automático de la mensualidad de plataforma a la tarjeta del dueño.
+# Desactivado: hoy se cobra manualmente desde el back-office (un clic por dueño).
+# El job ya está listo (engine._subscription_billing_worker): basta con poner
+# AUTO_SUBSCRIPTION_BILLING=true para que cobre solo a los dueños vencidos.
+AUTO_SUBSCRIPTION_BILLING      = os.getenv("AUTO_SUBSCRIPTION_BILLING", "false").lower() == "true"
+SUBSCRIPTION_CHECK_INTERVAL    = int(os.getenv("SUBSCRIPTION_CHECK_INTERVAL", "21600"))  # cada 6 h
+
 # ── Separación / reserva de cargador ──────────────────────────────────────────
 # El conductor "separa" un cargador: se RETIENE (no se cobra) una garantía en su
 # tarjeta. Si llega y carga → solo se captura la cuota fija (el resto se libera).

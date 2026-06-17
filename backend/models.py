@@ -53,6 +53,10 @@ class User(Base):
     # Verificación de correo (ingreso con correos reales)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     email_verify_token: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # Suscripción de plataforma (dueños): si la mensualidad NO está al día, sus
+    # cargadores se ocultan/bloquean. paid_until = hasta cuándo está cubierta.
+    subscription_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    subscription_paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
