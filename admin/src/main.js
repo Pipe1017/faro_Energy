@@ -430,19 +430,35 @@ function renderUsuarios(view) {
       ${unverified.length ? `<button class="mini del" id="cleanup" style="margin-left:auto;">Limpiar no verificados (${unverified.length})</button>` : ''}
     </div>
     <table>
-      <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Verificación</th><th>Creado</th><th></th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Saldo</th><th>Verificación</th><th>Creado</th><th></th></tr></thead>
       <tbody>
         ${users.map((u) => `
           <tr>
             <td>${u.name}</td>
             <td class="muted">${u.email}</td>
             <td>${u.role}${u.role === 'admin' ? ' <span class="badge muted">admin</span>' : ''}</td>
+            <td>${u.role === 'conductor' ? cop(u.wallet_cop) : '—'}</td>
             <td>${u.email_verified ? '<span class="badge ok">Verificado</span>' : '<span class="badge danger">Sin verificar</span>'}</td>
             <td class="muted">${fmtTime(u.created_at)}</td>
-            <td>${!u.email_verified ? `<button class="mini" data-verify="${u.id}">Verificar</button> ${u.role !== 'admin' ? `<button class="mini del" data-del="${u.id}">Borrar</button>` : ''}` : ''}</td>
+            <td>
+              ${u.role === 'conductor' ? `<button class="mini" data-bono="${u.id}">+ Saldo</button> ` : ''}
+              ${!u.email_verified ? `<button class="mini" data-verify="${u.id}">Verificar</button> ${u.role !== 'admin' ? `<button class="mini del" data-del="${u.id}">Borrar</button>` : ''}` : ''}
+            </td>
           </tr>`).join('')}
       </tbody>
     </table>`;
+
+  view.querySelectorAll('[data-bono]').forEach((b) => b.addEventListener('click', async () => {
+    const raw = prompt('Crédito/bono al saldo del conductor (COP). Negativo para ajustar:');
+    if (raw === null) return;
+    const n = parseInt(raw.replace(/[^\d-]/g, ''), 10);
+    if (!n) return;
+    try {
+      const r = await api(`/admin/users/${b.dataset.bono}/wallet-credit`, { method: 'POST', body: JSON.stringify({ amount_cop: n }) });
+      alert('Saldo nuevo: ' + cop(r.balance_cop));
+      renderTab();
+    } catch (e) { alert(e.message); }
+  }));
 
   const cleanupBtn = document.getElementById('cleanup');
   if (cleanupBtn) cleanupBtn.addEventListener('click', async () => {

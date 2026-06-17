@@ -40,6 +40,9 @@ export default function App() {
   const [reservations, setReservations]     = useState([]);
   // Pagos
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [wallet, setWallet]               = useState(null);   // saldo prepago
+  const [recargaModal, setRecargaModal]   = useState(false);
+  const [recargaAmount, setRecargaAmount] = useState(50000);
   const [payMethodsModal, setPayMethodsModal] = useState(null);
   const [confirmPayModal, setConfirmPayModal] = useState(null); // { method, charger }
   const [addMethodModal, setAddMethodModal]   = useState(null); // 'card' | 'nequi'
@@ -354,6 +357,10 @@ export default function App() {
     return () => clearTimeout(t);
   }, [debts, token]);
 
+  const fetchWallet = async () => {
+    try { setWallet(await apiFetch('/wallet', {}, token)); } catch {}
+  };
+
   const fetchPaymentMethods = async () => {
     try {
       const d = await apiFetch('/payment-methods', {}, token);
@@ -374,9 +381,9 @@ export default function App() {
       apiFetch('/brand-profiles', {}, token).then(d => setBrandProfiles(d.profiles || [])).catch(() => {});
       apiFetch('/my-events', {}, token).then(setOwnerEvents).catch(() => {});
     }
-    if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); }
+    if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
     if (tab === 'admin')   { apiFetch('/admin/summary', {}, token).then(setAdminSummary).catch(() => {}); }
-    if (!isOwner && token) fetchPaymentMethods();
+    if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); }
   }, [tab, token]);
 
   // Rendimiento del dueño — recargar al cambiar el período
@@ -427,8 +434,8 @@ export default function App() {
       ]);
       return;
     }
-    setPayMethodsModal(charger);
     setSelectedCharger(null);
+    startChargeWallet(charger);
   };
 
   // Añadir tarjeta nueva
@@ -499,6 +506,41 @@ export default function App() {
       setPaymentMethods(prev => prev.map(m => m.id === data.id ? data : m));
       setRenameModal(null);
     } catch (e) { Alert.alert('Error', e.message); }
+  };
+
+  // Iniciar carga contra el SALDO prepago (modo wallet)
+  const startChargeWallet = async (charger) => {
+    try {
+      const data = await apiFetch('/payments/initiate', {
+        method: 'POST', body: JSON.stringify({ charger_id: charger.id }),
+      }, token);
+      if (data.status === 'APPROVED') {
+        setActiveSession({ chargerId: charger.id, startTime: Date.now(), charger });
+        setSessionModal(true);
+        fetchStatus();
+      } else {
+        Alert.alert('No se pudo iniciar', 'Intenta de nuevo.');
+      }
+    } catch (e) {
+      if (/saldo insuficiente/i.test(e.message)) {
+        Alert.alert('Saldo insuficiente', e.message, [
+          { text: 'Recargar saldo', onPress: () => { setSelectedCharger(null); setChargerPanel(null); setQrModal(null); setTab('miuso'); setRecargaModal(true); } },
+          { text: 'Cancelar', style: 'cancel' },
+        ]);
+      } else { Alert.alert('Error', e.message); }
+    }
+  };
+
+  // Recargar saldo (1 cargo a la tarjeta guardada)
+  const doTopup = async (amount_cop, method) => {
+    try {
+      const r = await apiFetch('/wallet/topup', {
+        method: 'POST', body: JSON.stringify({ amount_cop, payment_method_id: method.id }),
+      }, token);
+      setRecargaModal(false);
+      Alert.alert('¡Recarga exitosa!', `Tu saldo ahora es $ ${r.balance_cop.toLocaleString('es-CO')} COP.`);
+      fetchWallet();
+    } catch (e) { Alert.alert('No se pudo recargar', e.message); }
   };
 
   // Pagar con método seleccionado
@@ -976,6 +1018,31 @@ export default function App() {
 
       {tab === 'miuso' && !isOwner ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
+          {/* Mi saldo (wallet prepago) */}
+          <View style={{ backgroundColor: T.card, borderRadius: 16, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: T.cardBorder }}>
+            <Text style={{ color: T.textMuted, fontSize: 12, fontWeight: '600', letterSpacing: 0.5 }}>MI SALDO</Text>
+            <Text style={{ color: T.green, fontSize: 34, fontWeight: '800', marginTop: 2, letterSpacing: -1 }}>
+              $ {(wallet?.balance_cop ?? 0).toLocaleString('es-CO')}
+            </Text>
+            <TouchableOpacity style={[styles.btn, styles.btnStart, { marginTop: 12 }]} onPress={() => { setRecargaAmount(wallet?.default_topup_cop || 50000); setRecargaModal(true); }}>
+              <Text style={styles.btnText}>Recargar saldo</Text>
+            </TouchableOpacity>
+            {wallet?.movements?.length > 0 && (
+              <View style={{ marginTop: 14 }}>
+                {wallet.movements.slice(0, 4).map(m => (
+                  <View key={m.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 }}>
+                    <Text style={{ color: T.textMuted, fontSize: 12 }}>
+                      {m.type === 'TOPUP' ? 'Recarga' : m.type === 'CHARGE' ? 'Carga' : m.type === 'BONUS' ? 'Bono' : m.type === 'REFUND' ? 'Reembolso' : m.type}
+                    </Text>
+                    <Text style={{ color: m.amount_cop >= 0 ? T.green : T.textPri, fontSize: 12, fontWeight: '700' }}>
+                      {m.amount_cop >= 0 ? '+' : ''}$ {m.amount_cop.toLocaleString('es-CO')}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
           {debts?.blocked && (
             <View style={{ backgroundColor: '#fbe7e7', borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1.5, borderColor: '#b91c1c' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -2335,7 +2402,7 @@ export default function App() {
             {/* Botones al fondo */}
             {!qrScanning && (
               <View style={[styles.modalActions, { width: '100%' }]}>
-                <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={() => { setQrModal(null); setPayMethodsModal(qrModal); }}>
+                <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={() => { const c = qrModal; setQrModal(null); startChargeWallet(c); }}>
                   <Feather name="zap" size={16} color="#fdfbf7" />
                   <Text style={styles.btnText}>Continuar al pago</Text>
                 </TouchableOpacity>
@@ -2349,13 +2416,52 @@ export default function App() {
       )}
 
       {/* ── Selección de método de pago (real con Wompi) ── */}
+      {/* ── Recargar saldo (wallet) ── */}
+      {recargaModal && (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setRecargaModal(false)} activeOpacity={1} />
+          <View style={styles.modal}>
+            <View style={styles.mapPanelHandle} />
+            <Text style={styles.modalTitle}>Recargar saldo</Text>
+            <Text style={[styles.mapPanelLocation, { marginBottom: 16 }]}>Saldo actual: $ {(wallet?.balance_cop ?? 0).toLocaleString('es-CO')} COP</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {[20000, 50000, 100000].map(a => (
+                <TouchableOpacity key={a} onPress={() => setRecargaAmount(a)}
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1.5,
+                    borderColor: recargaAmount === a ? T.green : T.cardBorder,
+                    backgroundColor: recargaAmount === a ? T.greenFaint : T.surface }}>
+                  <Text style={{ color: recargaAmount === a ? T.green : T.textPri, fontWeight: '700' }}>$ {a / 1000}k</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={{ color: T.textMuted, fontSize: 12, marginBottom: 8 }}>Cobrar a:</Text>
+            {paymentMethods.length === 0 ? (
+              <TouchableOpacity style={[styles.btn, styles.btnStart]} onPress={() => { setRecargaModal(false); setAddMethodModal('card'); }}>
+                <Text style={styles.btnText}>Agregar una tarjeta</Text>
+              </TouchableOpacity>
+            ) : (
+              paymentMethods.map(m => (
+                <TouchableOpacity key={m.id} style={styles.methodRow} onPress={() => doTopup(recargaAmount, m)}>
+                  <Feather name="credit-card" size={18} color={T.textMuted} />
+                  <Text style={{ color: T.textPri, flex: 1, marginLeft: 10 }}>{m.display}</Text>
+                  <Feather name="chevron-right" size={16} color={T.textMuted} />
+                </TouchableOpacity>
+              ))
+            )}
+            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 16 }]} onPress={() => setRecargaModal(false)}>
+              <Text style={[styles.btnText, { color: T.textMuted }]}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {payMethodsModal && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setPayMethodsModal(null)} activeOpacity={1} />
           <View style={styles.modal}>
             <View style={styles.mapPanelHandle} />
             <Text style={styles.modalTitle}>¿Cómo vas a pagar?</Text>
-            <Text style={styles.mapPanelLocation}>{payMethodsModal.location} · $ {Math.round((payMethodsModal.price_per_kwh_now ?? payMethodsModal.price_per_kwh ?? 0)*1.10*1.19*1.03).toLocaleString('es-CO')}/kWh</Text>
+            <Text style={styles.mapPanelLocation}>{payMethodsModal.location} · $ {Math.round((payMethodsModal.price_per_kwh_now ?? payMethodsModal.price_per_kwh ?? 0)*1.19).toLocaleString('es-CO')}/kWh</Text>
             <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: T.cardBorder }}>
               <Feather name="info" size={13} color={T.textMuted} />
               <Text style={{ color: T.textMuted, fontSize: 12, flex: 1 }}>
