@@ -36,30 +36,24 @@ const priceVal    = document.getElementById('price-val')
 const monthlyEl   = document.getElementById('monthly')
 const roiEl       = document.getElementById('roi-months')
 
-const POWER_KW  = 22
-const ELEC_COST = 700      // COP/kWh (tarifa comercial Medellín con IVA incluido)
-const EFFICIENCY = 0.62    // factor real: vehículos no siempre cargan a potencia máxima
-const INVEST    = 5_500_000 // COP — equipo + instalación promedio en Colombia
+// Números reales del modelo (Medellín 2026)
+const ELEC_COST  = 800        // COP/kWh — energía comercial EPM
+const COMMISSION = 0.15       // comisión Faro 15%
+const INVEST     = 6_000_000  // COP — cargador AC instalado
 
 function calcROI() {
-  const h = parseFloat(hoursRange.value)
-  const p = parseFloat(priceRange.value)
+  const kwhDay = parseFloat(hoursRange.value)   // el slider es kWh/día (utilización)
+  const p      = parseFloat(priceRange.value)
 
-  const kwhDay    = POWER_KW * h * EFFICIENCY
-  const kwhMonth  = kwhDay * 30
-  const income    = kwhMonth * p
-  const cost      = kwhMonth * ELEC_COST
-  const net       = Math.round(income - cost)
-  const months    = net > 0 ? Math.ceil(INVEST / net) : '—'
+  // Lo que le queda al dueño por kWh = precio − comisión 15% − costo de energía
+  const netPerKwh = p * (1 - COMMISSION) - ELEC_COST
+  const net       = Math.round(netPerKwh * kwhDay * 30)
+  const months    = net > 0 ? Math.ceil(INVEST / net) : null
 
-  hoursVal.textContent = `${h}h / día`
-  priceVal.textContent = `$${p.toLocaleString('es-CO')} / kWh`
+  hoursVal.textContent  = `${kwhDay} kWh/día`
+  priceVal.textContent  = `$${p.toLocaleString('es-CO')} / kWh`
   monthlyEl.textContent = net > 0 ? `$${net.toLocaleString('es-CO')} COP` : '—'
-  roiEl.textContent = net > 0
-    ? months <= 12  ? `~${months} meses`
-    : months <= 24  ? `~${months} meses`
-    : `~${Math.ceil(months/12)} años`
-    : '—'
+  roiEl.textContent     = !months ? '—' : months <= 24 ? `~${months} meses` : `~${Math.ceil(months / 12)} años`
 }
 
 hoursRange?.addEventListener('input', calcROI)

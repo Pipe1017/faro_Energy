@@ -100,45 +100,32 @@
       <div class="section__header section__header--center reveal">
         <div class="label">Cómo cobramos</div>
         <h2>Simple y claro</h2>
-        <p class="centered">Tú pones el precio por kWh. Faro cobra una comisión por cada carga — la pasarela la asume Faro.</p>
+        <p class="centered">Igual para todos: una comisión fija por carga y una mensualidad por cargador. La pasarela la asume Faro.</p>
       </div>
-      <div class="pricing-grid">
-        <div class="pricing-card reveal">
-          <div class="pricing-card__name">Dueño individual</div>
-          <div class="pricing-card__desc">Casa, edificio, negocio pequeño</div>
-          <div class="pricing-card__price"><span class="pricing-card__currency"></span>10–12%<span class="pricing-card__period">por carga</span></div>
-          <ul class="pricing-card__features">
-            <li>App y mapa para conductores</li>
-            <li>Pago automático a tu Nequi/banco</li>
-            <li>Panel de ingresos en vivo</li>
-            <li>Faro asume la pasarela</li>
-          </ul>
-          <a href="#contacto" class="btn btn--outline" style="width:100%;justify-content:center;margin-top:auto;">Empezar</a>
-        </div>
+      <div class="pricing-grid" style="max-width:720px;margin:0 auto;">
         <div class="pricing-card pricing-card--featured reveal">
-          <div class="pricing-card__badge">Más común</div>
-          <div class="pricing-card__name">Hotel · Mall · Gimnasio</div>
-          <div class="pricing-card__desc">Carga de destino, alto tráfico</div>
+          <div class="pricing-card__badge">Por cada carga</div>
+          <div class="pricing-card__name">Comisión 15%</div>
+          <div class="pricing-card__desc">Igual para todos</div>
           <div class="pricing-card__price"><span class="pricing-card__currency"></span>15%<span class="pricing-card__period">por carga</span></div>
           <ul class="pricing-card__features">
-            <li>Todo lo anterior</li>
-            <li>Visibilidad en la red</li>
-            <li>Monitoreo de disponibilidad (uptime)</li>
-            <li>Atrae clientes premium</li>
+            <li>Tú pones el precio por kWh</li>
+            <li>Pago automático a tu Nequi/banco</li>
+            <li>Faro asume la pasarela (Wompi)</li>
+            <li>Visibilidad en toda la red</li>
           </ul>
-          <a href="#contacto" class="btn btn--primary" style="width:100%;justify-content:center;margin-top:auto;">Solicitar demo</a>
         </div>
         <div class="pricing-card reveal">
-          <div class="pricing-card__name">Operador / cadena</div>
-          <div class="pricing-card__desc">Redes y flotas</div>
-          <div class="pricing-card__price" style="font-size:28px;padding:20px 0;">A negociar</div>
+          <div class="pricing-card__name">Plataforma</div>
+          <div class="pricing-card__desc">Mensualidad por cargador</div>
+          <div class="pricing-card__price"><span class="pricing-card__currency">$</span>50.000<span class="pricing-card__period">/cargador/mes</span></div>
           <ul class="pricing-card__features">
-            <li>SaaS + comisión reducida</li>
-            <li>Panel multi-sede</li>
-            <li>Integración / white-label</li>
-            <li>SLA garantizado</li>
+            <li><b>$30.000</b>/cargador/mes con <b>más de 5</b> cargadores</li>
+            <li>Panel de ingresos y sesiones</li>
+            <li>Monitoreo de disponibilidad (uptime)</li>
+            <li>Soporte</li>
           </ul>
-          <a href="#contacto" class="btn btn--outline" style="width:100%;justify-content:center;margin-top:auto;">Hablar con ventas</a>
+          <a href="#contacto" class="btn btn--primary" style="width:100%;justify-content:center;margin-top:auto;">Solicitar demo</a>
         </div>
       </div>
     </div>
@@ -163,8 +150,8 @@
         <div class="roi__calc reveal">
           <h3>Calculadora de retorno estimado</h3>
           <div class="roi__field">
-            <label>Horas de uso al día <span class="val" id="hours-val">4 h</span></label>
-            <input type="range" id="hours" min="1" max="8" step="0.5" value="4" />
+            <label>Energía entregada al día <span class="val" id="hours-val">30 kWh</span></label>
+            <input type="range" id="hours" min="10" max="80" step="5" value="30" />
           </div>
           <div class="roi__field">
             <label>Tu precio base <span class="val" id="price-val">$1.400 /kWh</span></label>

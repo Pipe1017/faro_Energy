@@ -333,7 +333,7 @@ function renderOwnerDetail(view) {
   view.innerHTML = `
     <button class="mini" id="back" style="background:none;color:#b45309;padding:0;margin-bottom:14px;">← Volver a dueños</button>
     <h1>${o.name}</h1>
-    <p class="muted" style="margin-bottom:14px;">${o.email} · tag ${o.tag || '—'} · ${o.responsable_iva ? 'Responsable de IVA' : 'No responsable de IVA'} · KYC: ${o.kyc_ok ? 'OK' : 'Falta RUT'}</p>
+    <p class="muted" style="margin-bottom:14px;">${o.email} · tag ${o.tag || '—'} · ${o.responsable_iva ? 'Responsable de IVA' : 'No responsable de IVA'} · KYC: ${o.kyc_ok ? 'OK' : 'Falta RUT'} · Mensualidad plataforma: <b>${cop(o.monthly_fee_cop ?? 0)}</b></p>
 
     <div class="section-title">Estado de cuenta</div>
     <div class="cards">

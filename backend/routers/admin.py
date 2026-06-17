@@ -20,7 +20,8 @@ from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransac
                     PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
                     Reservation, WalletTransaction, mask_email)
 from auth import get_current_user, SECRET_KEY, ALGORITHM
-from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, BOGOTA, MIN_WITHDRAW_COP, PLATFORM_MARGIN
+from config import (ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, BOGOTA,
+                    MIN_WITHDRAW_COP, PLATFORM_MARGIN, monthly_fee_cop)
 from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner, _wallet_balance_cents
 from state import connected_chargers
 import storage
@@ -244,6 +245,7 @@ async def owner_detail(owner_id: str, _: User = Depends(require_admin), db: Asyn
         "id": o.id, "name": o.name, "email": o.email, "tag": o.tag,
         "rut": o.rut, "responsable_iva": o.responsable_iva, "kyc_ok": bool(o.rut),
         "statement": statement,
+        "monthly_fee_cop": monthly_fee_cop(len(chargers)),   # mensualidad de plataforma
         "disbursement_account": acc.to_dict() if acc else None,
         "chargers": [{"id": c.id, "location": c.location, "power_kw": c.power_kw,
                       "price": c.price_per_kwh, "online": c.id in connected_chargers} for c in chargers],

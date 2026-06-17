@@ -31,7 +31,7 @@ Faro 15%.
 
 ## 3. Decisiones estratégicas (las 5 que cambian el modelo)
 1. **Saldo prepago (wallet)** en vez de pago por sesión → neutraliza el $700 fijo de Wompi.
-2. **Comisión 12–15%**, no 10% → a 10% el margen no cubre la pasarela.
+2. **Comisión fija 15% para todos** + **mensualidad de plataforma** ($50.000/cargador, o $30.000/cargador si tiene **más de 5**). Faro asume la pasarela en la recarga (no el conductor ni el dueño).
 3. **Reposicionar al dueño:** de "ingreso pasivo" a **"amenidad que atrae clientes premium"**.
 4. **Foco en destino AC + densidad geográfica** (una zona: El Poblado/Laureles) → más kWh por transacción.
 5. **Uptime como producto** (monitoreo + SLA) — la restricción real no es el hardware, es la operación (lección de Monta, Europa).

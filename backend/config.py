@@ -28,9 +28,16 @@ ACCT_FARO_GATEWAY = "cost:gateway"   # bolsa de costo de pasarela que Faro ASUME
 # "faro" (lo absorbe Faro como costo). Default: el dueño, para no erosionar margen.
 GATEWAY_BORNE_BY = os.getenv("GATEWAY_BORNE_BY", "owner").lower()
 
-# Mensualidad del dueño (suscripción a la plataforma). Parametrizable; en 0 queda
-# inerte (no se cobra ni se factura). Se debita del saldo del dueño cada mes.
-SUBSCRIPTION_COP = int(os.getenv("SUBSCRIPTION_COP", "0"))
+# Mensualidad de plataforma por cargador: $50.000, o $30.000 si el dueño tiene
+# MÁS de 5 cargadores. Igual para todos los segmentos.
+SUBSCRIPTION_COP          = int(os.getenv("SUBSCRIPTION_COP", "50000"))         # 1–5 cargadores
+SUBSCRIPTION_COP_5PLUS    = int(os.getenv("SUBSCRIPTION_COP_5PLUS", "30000"))   # >5 cargadores
+SUBSCRIPTION_5PLUS_FROM   = int(os.getenv("SUBSCRIPTION_5PLUS_FROM", "5"))      # umbral
+
+def monthly_fee_cop(n_chargers: int) -> int:
+    """Mensualidad total del dueño según cuántos cargadores tenga."""
+    rate = SUBSCRIPTION_COP_5PLUS if n_chargers > SUBSCRIPTION_5PLUS_FROM else SUBSCRIPTION_COP
+    return rate * n_chargers
 
 # Exigir correo verificado para iniciar sesión. Los usuarios sembrados y el admin
 # se crean ya verificados, así que esto solo afecta a registros nuevos sin confirmar.
