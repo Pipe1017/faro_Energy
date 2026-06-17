@@ -146,6 +146,7 @@ class ChargePoint(cp):
                 charger.meter_start = meter_start
                 charger.session_started_at = datetime.now(timezone.utc)
                 charger.current_kwh = 0.0   # resetear al iniciar sesión nueva
+                _wallet_stop_sent.discard(self.id)
                 _notify_owner(db, charger.owner_id, "SESSION_STARTED",
                               f"{self.id}: carga iniciada por {session_user}", self.id)
                 await db.commit()
@@ -171,6 +172,8 @@ class ChargePoint(cp):
                     charger.current_kwh = max(0.0, session_kwh)
                     await db.commit()
                     logger.info(f"[{self.id}] MeterValues: {wh:.0f}Wh → {charger.current_kwh:.3f} kWh")
+                    # Seguridad wallet: cortar si el costo alcanza el saldo prepago
+                    await _enforce_wallet_limit(db, charger)
         except Exception as e:
             logger.warning(f"[{self.id}] Error MeterValues: {e}")
         return call_result.MeterValuesPayload()
@@ -336,6 +339,7 @@ async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, fina
     charger.session_started_at = None
     charger.current_kwh = None
     charger.meter_start = None
+    _wallet_stop_sent.discard(charger.id)
     logger.info(f"[{charger.id}] {kwh:.3f}kWh · ingreso:{m['revenue']} · luz:{m['elec_cost']} · neto:{m['net_profit']} COP")
     return session
 
@@ -648,6 +652,54 @@ async def _wallet_balance_cents(db: AsyncSession, user_id: str) -> int:
         .where(WalletTransaction.user_id == user_id)
     )
     return int(result.scalar() or 0)
+
+
+# Cargadores a los que ya enviamos el corte por saldo (evita reenviar RemoteStop
+# en cada MeterValue mientras el cargador termina de detenerse).
+_wallet_stop_sent: set[str] = set()
+
+
+async def _enforce_wallet_limit(db: AsyncSession, charger: Charger):
+    """Seguridad del saldo prepago: si el costo acumulado de la carga alcanza el
+    saldo del conductor, corta la carga (RemoteStop) antes de que quede en deuda.
+    Solo aplica a sesiones WALLET. Deja un colchón (≈2 min de energía) porque entre
+    una muestra y la siguiente podría entrar más energía."""
+    if not charger.active_transaction or charger.id in _wallet_stop_sent:
+        return
+    pay_tx = (await db.execute(
+        select(PaymentTransaction).where(
+            PaymentTransaction.charger_id == charger.id,
+            PaymentTransaction.status == "APPROVED",
+            PaymentTransaction.session_id.is_(None),
+        ).order_by(PaymentTransaction.created_at.desc()).limit(1)
+    )).scalars().first()
+    if not pay_tx or pay_tx.payment_type != "WALLET":
+        return
+
+    bal = await _wallet_balance_cents(db, pay_tx.user_id)
+    owner = await db.get(User, charger.owner_id) if charger.owner_id else None
+    responsable_iva = owner.responsable_iva if owner else True
+    m = session_money(charger.current_kwh or 0.0, charger, charger.session_started_at, responsable_iva)
+    cost_cents = m["total"] * 100
+
+    # Colchón adaptado a la potencia: energía que podría entrar en ~2 min a tope
+    price_user = (charger.price_at(charger.session_started_at) or 1000) * (1 + (IVA_RATE if responsable_iva else 0))
+    margin_cents = max(round((charger.power_kw or 7.0) * (2 / 60) * price_user) * 100, int(bal * 0.03))
+
+    if cost_cents < bal - margin_cents:
+        return
+
+    conn = connected_chargers.get(charger.id)
+    if not conn:
+        return
+    _wallet_stop_sent.add(charger.id)
+    try:
+        await conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
+        logger.info(f"[{charger.id}] Corte por saldo: costo ${m['total']:,} ≈ saldo ${bal // 100:,} "
+                    f"(colchón ${margin_cents // 100:,}) → RemoteStop")
+    except Exception as e:
+        _wallet_stop_sent.discard(charger.id)
+        logger.warning(f"[{charger.id}] No se pudo cortar por saldo: {e}")
 
 
 async def _settle_owner(db: AsyncSession, owner_id: str, min_cop: int) -> dict:

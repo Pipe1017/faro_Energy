@@ -299,6 +299,14 @@ export default function App() {
             sid = u.sessions?.[0]?.id ?? null;
           } catch {}
           setRatePrompt({ sessionId: sid, kwh, cost });
+          // Refrescar saldo y avisar si quedó bajo (la carga pudo cortarse por saldo)
+          try {
+            const w = await apiFetch('/wallet', {}, token);
+            setWallet(w);
+            if ((w.balance_cop ?? 0) < 5000) {
+              Alert.alert('Saldo bajo', 'Tu saldo quedó bajo. Recarga para volver a cargar.');
+            }
+          } catch {}
         } else {
           // Barra colgada (estado viejo / sin carga real) → quitar en silencio
           setActiveSession(null); setSessionModal(false);
