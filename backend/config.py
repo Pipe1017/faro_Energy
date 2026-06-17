@@ -2,9 +2,13 @@
 import os
 from zoneinfo import ZoneInfo
 
-PLATFORM_MARGIN = 0.10   # 10% comisión CPO
+PLATFORM_MARGIN = 0.15   # 15% comisión Faro (modelo nuevo)
 IVA_RATE        = 0.19   # IVA Colombia
-GATEWAY_FEE     = 0.03   # pasarela de pagos
+GATEWAY_FEE     = 0.03   # (legado; en wallet la pasarela va en la recarga, no por sesión)
+
+# Tarifa real de Wompi por transacción (la asume FARO en cada recarga del wallet).
+WOMPI_FEE_PCT       = 0.0265   # 2,65%
+WOMPI_FEE_FIXED_COP = 700      # + $700 fijo
 
 WOMPI_MIN_CENTS         = 150_000  # $1.500 COP — monto mínimo que acepta Wompi
 CHARGE_MAX_ATTEMPTS     = 8        # reintentos de cobro antes de pasar a revisión manual
@@ -16,8 +20,9 @@ OFFLINE_SESSION_TIMEOUT = 300      # s sin señal del cargador antes de cerrar s
 #   wallet:owner:<id>  → lo que Faro le debe al dueño (pasivo)
 #   revenue:faro       → ingreso de Faro (comisión + mensualidad)
 #   tax:iva            → IVA de los servicios de Faro, por girar a la DIAN
-ACCT_FARO_REVENUE = "revenue:faro"   # bolsa de ingresos de Faro
+ACCT_FARO_REVENUE = "revenue:faro"   # bolsa de ingresos de Faro (comisión)
 ACCT_FARO_IVA     = "tax:iva"        # bolsa de IVA recaudado por Faro (a la DIAN)
+ACCT_FARO_GATEWAY = "cost:gateway"   # bolsa de costo de pasarela que Faro ASUME (negativa)
 
 # Quién asume el costo de pasarela (3%): "owner" (se descuenta de su saldo) o
 # "faro" (lo absorbe Faro como costo). Default: el dueño, para no erosionar margen.

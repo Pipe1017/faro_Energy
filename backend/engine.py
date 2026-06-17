@@ -239,12 +239,14 @@ def session_money(kwh: float, charger: Charger, started_at: datetime | None = No
     revenue        = round(kwh * price_base)                          # venta de energía del dueño (base)
     recarga_iva    = round(revenue * IVA_RATE) if responsable_iva else 0
     total          = revenue + recarga_iva                            # lo que paga el conductor
-    commission     = round(revenue * PLATFORM_MARGIN)                 # comisión Faro (cargada al dueño)
+    commission     = round(revenue * PLATFORM_MARGIN)                 # comisión Faro 15% (descontada del dueño)
     commission_iva = round(commission * IVA_RATE)                     # Faro siempre es responsable de IVA
-    gateway        = round(total * GATEWAY_FEE)                       # pasarela sobre lo recaudado
-    gateway_owner  = gateway if GATEWAY_BORNE_BY == "owner" else 0
+    # Modelo wallet: NO hay pasarela por sesión (el conductor paga con saldo). La
+    # pasarela la asume Faro en la RECARGA del wallet. Por eso el dueño no la paga.
+    gateway        = 0
+    gateway_owner  = 0
     elec_cost      = round(kwh * cost_base)
-    net_owner      = total - commission - commission_iva - gateway_owner
+    net_owner      = total - commission - commission_iva
     return {
         "revenue": revenue, "recarga_iva": recarga_iva, "total": total,
         "commission": commission, "commission_iva": commission_iva,

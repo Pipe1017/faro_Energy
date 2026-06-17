@@ -203,6 +203,10 @@ async def wallet_topup(body: TopupBody, current_user: User = Depends(get_current
     db.add(WalletTransaction(user_id=current_user.id, type="TOPUP", amount_cents=amount_cents,
                             reference=reference, wompi_id=str(wid) if wid else None,
                             description=f"Recarga de saldo ${body.amount_cop:,} COP"))
+    # Faro ASUME la pasarela de la recarga (no el conductor): se registra como costo.
+    fee_cents = round((amount_cents * WOMPI_FEE_PCT + WOMPI_FEE_FIXED_COP * 100) * (1 + IVA_RATE))
+    db.add(LedgerEntry(owner_id=None, account=ACCT_FARO_GATEWAY, type="GATEWAY_COST",
+                       amount_cents=-fee_cents, description=f"Pasarela recarga ${body.amount_cop:,} COP"))
     await db.commit()
     bal = await _wallet_balance_cents(db, current_user.id)
     return {"ok": True, "amount_cop": body.amount_cop, "balance_cop": bal // 100}

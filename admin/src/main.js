@@ -140,13 +140,19 @@ function renderResumen(view) {
   const o = state.overview;
   view.innerHTML = `
     <h1>Resumen</h1>
-    <div class="section-title">Bolsas de plata</div>
+    <div class="section-title">Ingreso de Faro · comisión ${o.money.commission_rate_pct ?? 15}%</div>
     <div class="cards">
-      ${card('Ingreso Faro', cop(o.money.faro_revenue_cop), 'comisión + mensualidad', 'accent')}
+      ${card('Comisión (bruto)', cop(o.money.faro_revenue_cop), `${o.money.commission_rate_pct ?? 15}% de las cargas`)}
+      ${card('− Pasarela (Wompi)', cop(o.money.faro_gateway_cost_cop ?? 0), 'la asume Faro')}
+      ${card('= Ingreso neto Faro', cop(o.money.faro_net_cop ?? o.money.faro_revenue_cop), 'comisión − pasarela', 'accent')}
+    </div>
+    <p class="muted" style="margin:-2px 0 6px;font-size:.85rem;">El conductor y el dueño <b>no pagan</b> la pasarela — la asume Faro en cada recarga del saldo.</p>
+    <div class="section-title">Otras bolsas</div>
+    <div class="cards">
       ${card('IVA por girar a DIAN', cop(o.money.iva_to_dian_cop), 'recaudado, no es ingreso')}
-      ${card('Deuda con dueños', cop(o.money.owed_to_owners_cop), 'saldo en sus bolsas')}
+      ${card('Deuda con dueños', cop(o.money.owed_to_owners_cop), 'saldo por pagarles')}
       ${card('Recaudado (histórico)', cop(o.money.collected_cop), 'total cobrado a conductores')}
-      ${card('Girado a dueños', cop(o.money.disbursed_cop), 'liquidaciones enviadas')}
+      ${card('Girado a dueños', cop(o.money.disbursed_cop), 'pagos enviados')}
     </div>
     <div class="section-title">Actividad</div>
     <div class="cards">

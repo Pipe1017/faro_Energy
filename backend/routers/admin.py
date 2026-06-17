@@ -20,7 +20,7 @@ from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransac
                     PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
                     Reservation, WalletTransaction, mask_email)
 from auth import get_current_user, SECRET_KEY, ALGORITHM
-from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, BOGOTA, MIN_WITHDRAW_COP
+from config import ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, BOGOTA, MIN_WITHDRAW_COP, PLATFORM_MARGIN
 from engine import _faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner, _wallet_balance_cents
 from state import connected_chargers
 import storage
@@ -76,8 +76,9 @@ def _cop(cents: int | None) -> int:
 @router.get("/overview")
 async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Tablero de plata: bolsas + actividad. Todo en COP enteros."""
-    faro_revenue = await _faro_balance_cents(db, ACCT_FARO_REVENUE)
+    faro_revenue = await _faro_balance_cents(db, ACCT_FARO_REVENUE)   # comisión (bruto)
     iva_to_dian  = await _faro_balance_cents(db, ACCT_FARO_IVA)
+    gateway_cost = await _faro_balance_cents(db, ACCT_FARO_GATEWAY)   # negativo (lo que Faro paga a Wompi)
 
     # Deuda con dueños = suma de sus bolsas (wallets): account NULL, owner_id no nulo
     owed = await db.execute(
@@ -111,7 +112,10 @@ async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(
 
     return {
         "money": {
-            "faro_revenue_cop":  _cop(faro_revenue),
+            "commission_rate_pct": round(PLATFORM_MARGIN * 100),
+            "faro_revenue_cop":  _cop(faro_revenue),                       # comisión (bruto)
+            "faro_gateway_cost_cop": _cop(abs(gateway_cost)),             # pasarela que Faro asume
+            "faro_net_cop":      _cop(faro_revenue + gateway_cost),       # neto = comisión − pasarela
             "iva_to_dian_cop":   _cop(iva_to_dian),
             "owed_to_owners_cop": _cop(owed_to_owners),
             "collected_cop":     _cop(int(collected.scalar() or 0)),
