@@ -1316,7 +1316,20 @@ img { max-width: 100%; display: block; }
 }
 
 /* ── Splash (index): pantalla dividida a pantalla completa ─────────────── */
-.split--full { min-height: 100vh; border-bottom: none; }
+.split--full { min-height: 100vh; border-bottom: none; position: relative; overflow: hidden; }
+/* Fondo: foto de cargadores muy desenfocada (contexto), en tono claro (paleta) */
+.split--full::before {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  background: url('/CargadoresEnEstacionamiento.jpg') center/cover no-repeat;
+  filter: blur(18px) saturate(.9) brightness(1.05);
+  transform: scale(1.18);   /* evita que el blur muestre los bordes */
+}
+.split--full .split__half {
+  position: relative; z-index: 1;
+  background: rgba(253, 251, 247, 0.62);          /* marfil translúcido → deja ver el fondo */
+  backdrop-filter: blur(2px);
+}
+.split--full .split__half--dueno { background: rgba(247, 239, 227, 0.62); }
 .split--full .split__phone { max-width: 150px; margin-top: 22px; }   /* mini celular */
 .splash-brand {
   position: absolute; top: 22px; left: 0; right: 0; z-index: 5;
