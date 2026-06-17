@@ -78,9 +78,24 @@ def _cop(cents: int | None) -> int:
 @router.get("/overview")
 async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Tablero de plata: bolsas + actividad. Todo en COP enteros."""
-    faro_revenue = await _faro_balance_cents(db, ACCT_FARO_REVENUE)   # comisión (bruto)
+    faro_revenue = await _faro_balance_cents(db, ACCT_FARO_REVENUE)   # comisión + mensualidad (bruto)
     iva_to_dian  = await _faro_balance_cents(db, ACCT_FARO_IVA)
     gateway_cost = await _faro_balance_cents(db, ACCT_FARO_GATEWAY)   # negativo (lo que Faro paga a Wompi)
+
+    async def _revenue_by_type(t: str) -> int:
+        r = await db.execute(
+            select(func.coalesce(func.sum(LedgerEntry.amount_cents), 0))
+            .where(LedgerEntry.account == ACCT_FARO_REVENUE, LedgerEntry.type == t)
+        )
+        return int(r.scalar() or 0)
+    commission_income   = await _revenue_by_type("COMMISSION_INCOME")
+    subscription_income = await _revenue_by_type("SUBSCRIPTION_INCOME")
+
+    # Suscripciones de dueños: activos vs suspendidos
+    owners_total = await db.execute(select(func.count(User.id)).where(User.role == "owner"))
+    owners_suspended = await db.execute(
+        select(func.count(User.id)).where(User.role == "owner", User.subscription_active.is_(False))
+    )
 
     # Deuda con dueños = suma de sus bolsas (wallets): account NULL, owner_id no nulo
     owed = await db.execute(
@@ -115,13 +130,19 @@ async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(
     return {
         "money": {
             "commission_rate_pct": round(PLATFORM_MARGIN * 100),
-            "faro_revenue_cop":  _cop(faro_revenue),                       # comisión (bruto)
+            "faro_revenue_cop":  _cop(faro_revenue),                       # comisión + mensualidad (bruto)
+            "commission_income_cop":   _cop(commission_income),            # solo comisión
+            "subscription_income_cop": _cop(subscription_income),          # solo mensualidad
             "faro_gateway_cost_cop": _cop(abs(gateway_cost)),             # pasarela que Faro asume
-            "faro_net_cop":      _cop(faro_revenue + gateway_cost),       # neto = comisión − pasarela
+            "faro_net_cop":      _cop(faro_revenue + gateway_cost),       # neto = (comisión + mensualidad) − pasarela
             "iva_to_dian_cop":   _cop(iva_to_dian),
             "owed_to_owners_cop": _cop(owed_to_owners),
             "collected_cop":     _cop(int(collected.scalar() or 0)),
             "disbursed_cop":     _cop(abs(int(disbursed.scalar() or 0))),
+        },
+        "subscriptions": {
+            "owners_total":     int(owners_total.scalar() or 0),
+            "owners_suspended": int(owners_suspended.scalar() or 0),
         },
         "activity": {
             "sessions_total": int(total_sessions.scalar() or 0),
@@ -197,6 +218,7 @@ async def list_owners(_: User = Depends(require_admin), db: AsyncSession = Depen
             "kyc_ok": bool(o.rut),
             "balance_cop": int(bal.scalar() or 0) // 100,
             "chargers": int(n_ch.scalar() or 0),
+            "subscription_active": o.subscription_active,
         })
     out.sort(key=lambda x: x["balance_cop"], reverse=True)
     return out

@@ -142,11 +142,19 @@ function renderResumen(view) {
     <h1>Resumen</h1>
     <div class="section-title">Ingreso de Faro · comisión ${o.money.commission_rate_pct ?? 15}%</div>
     <div class="cards">
-      ${card('Comisión (bruto)', cop(o.money.faro_revenue_cop), `${o.money.commission_rate_pct ?? 15}% de las cargas`)}
+      ${card('Comisión', cop(o.money.commission_income_cop ?? o.money.faro_revenue_cop), `${o.money.commission_rate_pct ?? 15}% de las cargas`)}
+      ${card('Mensualidad', cop(o.money.subscription_income_cop ?? 0), 'plataforma, cobrada a tarjeta')}
       ${card('− Pasarela (Wompi)', cop(o.money.faro_gateway_cost_cop ?? 0), 'la asume Faro')}
-      ${card('= Ingreso neto Faro', cop(o.money.faro_net_cop ?? o.money.faro_revenue_cop), 'comisión − pasarela', 'accent')}
+      ${card('= Ingreso neto Faro', cop(o.money.faro_net_cop ?? o.money.faro_revenue_cop), '(comisión + mensualidad) − pasarela', 'accent')}
     </div>
-    <p class="muted" style="margin:-2px 0 6px;font-size:.85rem;">El conductor y el dueño <b>no pagan</b> la pasarela — la asume Faro en cada recarga del saldo.</p>
+    <p class="muted" style="margin:-2px 0 6px;font-size:.85rem;">El conductor y el dueño <b>no pagan</b> la pasarela — la asume Faro en cada recarga del saldo y en cada mensualidad.</p>
+
+    <div class="section-title">Suscripciones de dueños</div>
+    <div class="cards">
+      ${card('Dueños activos', `${(o.subscriptions?.owners_total ?? 0) - (o.subscriptions?.owners_suspended ?? 0)} / ${o.subscriptions?.owners_total ?? 0}`, 'cargadores habilitados', 'ok')}
+      ${card('Suspendidos', o.subscriptions?.owners_suspended ?? 0, 'cargadores ocultos', (o.subscriptions?.owners_suspended ?? 0) ? 'danger' : '')}
+      ${card('Mensualidad cobrada', cop(o.money.subscription_income_cop ?? 0), 'ingreso por plataforma')}
+    </div>
     <div class="section-title">Otras bolsas</div>
     <div class="cards">
       ${card('IVA por girar a DIAN', cop(o.money.iva_to_dian_cop), 'recaudado, no es ingreso')}
@@ -306,13 +314,14 @@ function renderDuenos(view) {
     <h1>Dueños</h1>
     <p class="muted" style="margin-bottom:12px;">Toca un dueño para ver su estado de cuenta y pagarle.</p>
     <table>
-      <thead><tr><th>Nombre</th><th>Correo</th><th>Saldo</th><th>Cargadores</th><th>IVA</th><th>RUT / KYC</th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Mensualidad</th><th>Saldo</th><th>Cargadores</th><th>IVA</th><th>RUT / KYC</th></tr></thead>
       <tbody>
-        ${state.owners.length === 0 ? `<tr><td colspan="6" class="empty">Sin dueños</td></tr>` :
+        ${state.owners.length === 0 ? `<tr><td colspan="7" class="empty">Sin dueños</td></tr>` :
           state.owners.map((o) => `
           <tr class="clickable" data-owner="${o.id}">
             <td>${o.name}</td>
             <td class="muted">${o.email}</td>
+            <td>${o.subscription_active === false ? '<span class="badge danger">Suspendido</span>' : '<span class="badge ok">Activo</span>'}</td>
             <td><b>${cop(o.balance_cop)}</b></td>
             <td>${o.chargers}</td>
             <td>${o.responsable_iva ? '<span class="badge ok">Responsable</span>' : '<span class="badge muted">No</span>'}</td>
