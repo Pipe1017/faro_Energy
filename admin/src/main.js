@@ -345,6 +345,17 @@ function renderOwnerDetail(view) {
       ${card('SALDO POR PAGAR', cop(s.saldo_cop), '', 'accent')}
     </div>
 
+    <div class="section-title">Mensualidad de plataforma</div>
+    <div class="card" style="max-width:420px;">
+      <div class="muted" style="font-size:.85rem;margin-bottom:6px;">
+        ${o.chargers.length} cargador(es) · ${cop(o.monthly_fee_cop ?? 0)} / mes · periodo ${o.current_period || ''}
+        ${o.subscription_charged ? ' · <span class="badge ok">cobrada este mes</span>' : ''}
+      </div>
+      <button class="mini" id="sub" ${(o.subscription_charged || (o.chargers.length === 0)) ? 'disabled' : ''}>
+        ${o.subscription_charged ? 'Mensualidad ya cobrada' : `Cobrar mensualidad de ${cop(o.monthly_fee_cop ?? 0)}`}
+      </button>
+    </div>
+
     <div class="section-title">Pago al dueño</div>
     <div class="card" style="max-width:420px;">
       <div class="muted" style="font-size:.85rem;margin-bottom:6px;">
@@ -385,6 +396,22 @@ function renderOwnerDetail(view) {
   document.getElementById('back').addEventListener('click', () => { state.ownerDetail = null; renderTab(); });
   const payBtn = document.getElementById('pay');
   if (payBtn) payBtn.addEventListener('click', () => openPayModal(o));
+  const subBtn = document.getElementById('sub');
+  if (subBtn && !subBtn.disabled) subBtn.addEventListener('click', () => chargeSubscription(o));
+}
+
+function chargeSubscription(o) {
+  if (!confirm(
+    `Cobrar la mensualidad de ${o.current_period} a ${o.name}?\n\n` +
+    `${o.chargers.length} cargador(es) → ${cop(o.monthly_fee_cop ?? 0)} + IVA.\n` +
+    `Se descuenta de su saldo y se emite la factura.`)) return;
+  api(`/admin/owners/${o.id}/charge-subscription`, {
+    method: 'POST', body: JSON.stringify({}),
+  }).then((r) => {
+    alert(`Mensualidad ${r.period} cobrada: ${cop(r.fee_cop)} + IVA ${cop(r.iva_cop)} = ${cop(r.total_cop)}.\nSaldo nuevo del dueño: ${cop(r.new_balance_cop)}.`);
+    return api(`/admin/owners/${o.id}`);
+  }).then((d) => { state.ownerDetail = d; renderTab(); })
+    .catch((err) => alert(err.message));
 }
 
 function openPayModal(o) {
