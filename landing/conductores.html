@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faro Energy — Para conductores</title>
+  <meta name="description" content="Carga tu vehículo eléctrico en la red Faro: precios visibles, pago con saldo y muchos puntos de carga en Medellín." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="container nav__inner">
+      <a href="/" class="nav__logo" style="display:flex;align-items:center;gap:9px;text-decoration:none;">
+        <svg width="27" height="44" viewBox="36 28 48 78" aria-hidden="true">
+          <rect x="52" y="44" width="16" height="14" rx="3" fill="#b45309"/>
+          <path d="M50 44 L60 34 L70 44 Z" fill="#2b2520"/>
+          <path d="M53 58 L67 58 L72 98 L48 98 Z" fill="#2b2520"/>
+          <path d="M62 64 L55 80 L60 80 L57 92 L66 75 L61 75 Z" fill="#faf7f1"/>
+          <rect x="42" y="98" width="36" height="5" rx="2.5" fill="#b45309"/>
+        </svg>
+        <span style="display:flex;flex-direction:column;line-height:1;">
+          <span style="font-size:21px;font-weight:800;letter-spacing:-0.5px;color:#2b2520;">Faro<span style="color:#b45309;">Energy</span></span>
+          <span style="font-size:8.5px;font-weight:700;letter-spacing:2.4px;color:#6b5d4a;margin-top:3px;">CONDUCTORES</span>
+        </span>
+      </a>
+      <ul class="nav__links" id="nav-links">
+        <li><a href="#app">Probar la app</a></li>
+        <li><a href="/negocio.html">¿Tienes un cargador?</a></li>
+        <li><a href="#app" class="btn btn--primary nav__cta">Descargar</a></li>
+      </ul>
+      <a href="#app" class="btn btn--primary nav__mobile-cta">Descargar</a>
+      <button class="nav__burger" id="nav-burger" aria-label="Menú"><span></span><span></span><span></span></button>
+    </div>
+  </nav>
+
+  <!-- Hero conductor -->
+  <section class="aud-section aud-section--conductor" id="conductores" style="padding-top:120px;">
+    <div class="container">
+      <div class="aud-section__inner">
+        <div class="aud-section__text">
+          <div class="aud-section__badge">Para conductores</div>
+          <h2 class="aud-section__title">Carga donde estés,<br/>paga solo lo que usas</h2>
+          <p class="aud-section__intro">Accede a una red de puntos de carga en crecimiento por toda la ciudad. Ve el precio en el mapa antes de llegar y paga con tu saldo — seguro con Wompi.</p>
+          <div class="steps" style="margin-top:4px;">
+            <div class="steps__card reveal">
+              <span class="steps__card-num">01</span>
+              <h3>Recarga tu saldo</h3>
+              <p>Agrega saldo una vez con tu tarjeta (protegida por Wompi). De ahí se descuentan tus cargas.</p>
+            </div>
+            <div class="steps__card reveal">
+              <span class="steps__card-num">02</span>
+              <h3>Encuentra el cargador en el mapa</h3>
+              <p>Ve precio, potencia y distancia antes de salir. Filtra por zona o tipo de conector.</p>
+            </div>
+            <div class="steps__card reveal">
+              <span class="steps__card-num">03</span>
+              <h3>Carga y listo</h3>
+              <p>Escanea el QR, carga tu vehículo. El cobro exacto se descuenta de tu saldo al terminar.</p>
+            </div>
+          </div>
+          <a href="#app" class="btn btn--primary" style="margin-top:28px;">Probar la app</a>
+        </div>
+        <div class="phone-slider">
+          <div class="phone-slider__track">
+            <div class="phone-slider__slide"><div class="phone"><div class="phone__notch"></div><img src="/MapaDeCargadores.jpeg" alt="Mapa de cargadores" /></div></div>
+            <div class="phone-slider__slide"><div class="phone"><div class="phone__notch"></div><img src="/ResuemnCOnsumoUsuario.jpeg" alt="Resumen de consumo" /></div></div>
+          </div>
+          <div class="phone-slider__dots"><span></span><span></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Probar la app -->
+  <section class="section section--alt" id="app">
+    <div class="container">
+      <div class="section__header section__header--center reveal">
+        <div class="label">Pruébala ahora · Beta</div>
+        <h2>Abre Faro en tu celular</h2>
+        <p class="centered">Estamos en beta abierta. La app corre dentro de <b>Expo Go</b> — pruébala en 2 pasos.</p>
+      </div>
+      <div class="reveal" style="display:flex;gap:40px;flex-wrap:wrap;align-items:center;justify-content:center;background:#fff;border:1px solid #ece3d6;border-radius:24px;padding:36px;box-shadow:0 12px 40px rgba(43,37,32,.06);max-width:860px;margin:0 auto;">
+        <div style="flex:1;min-width:280px;">
+          <div style="display:flex;gap:14px;margin-bottom:18px;">
+            <span style="font-size:22px;font-weight:800;color:#b45309;">1</span>
+            <div style="color:#4a4239;line-height:1.5;">
+              <b style="color:#2b2520;">Descarga Expo Go</b> (gratis)<br/>
+              <a href="https://apps.apple.com/co/app/expo-go/id982107779" target="_blank" rel="noopener">App Store (iPhone)</a> ·
+              <a href="https://play.google.com/store/apps/details?id=host.exp.exponent" target="_blank" rel="noopener">Google Play (Android)</a>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;margin-bottom:18px;">
+            <span style="font-size:22px;font-weight:800;color:#b45309;">2</span>
+            <div style="color:#4a4239;line-height:1.5;">
+              <b style="color:#2b2520;">Escanea el QR</b> y se abre Faro en Expo Go.<br/>
+              <span style="color:#6b5d4a;font-size:14px;">iPhone: con la cámara. Android: desde el escáner de Expo Go.</span>
+            </div>
+          </div>
+          <div style="background:#f4ede2;border-radius:12px;padding:12px 14px;color:#6b5d4a;font-size:14px;">
+            Pagos seguros con <b>Wompi</b> · Visa y Mastercard.
+          </div>
+        </div>
+        <div style="text-align:center;">
+          <img src="/qr-app.png" alt="Escanea para abrir Faro en Expo Go" style="width:220px;height:220px;border-radius:16px;border:1px solid #ece3d6;" />
+          <div style="margin-top:10px;font-size:13px;color:#8a7d6a;">Escanéame con Expo Go</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="/" style="display:flex;align-items:center;gap:8px;text-decoration:none;">
+        <span style="font-size:16px;font-weight:800;color:#2b2520;">Faro<span style="color:#b45309;">Energy</span></span>
+      </a>
+      <ul class="footer__links">
+        <li><a href="/negocio.html">Negocio de carga</a></li>
+        <li><a href="#app">Probar la app</a></li>
+      </ul>
+      <p class="footer__copy">© 2026 Faro Energy · Medellín, Colombia</p>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -1312,4 +1312,14 @@ img { max-width: 100%; display: block; }
   .split__half:hover { flex: 1; }
   .split__title { font-size: 32px; }
   .split__phone { max-width: 200px; }
+  .split--full .split__half { min-height: 50vh; }   /* splash: dos mitades en móvil */
 }
+
+/* ── Splash (index): pantalla dividida a pantalla completa ─────────────── */
+.split--full { min-height: 100vh; border-bottom: none; }
+.splash-brand {
+  position: absolute; top: 22px; left: 0; right: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  pointer-events: none;
+}
+.splash-brand span { font-size: 18px; font-weight: 800; color: #2b2520; }

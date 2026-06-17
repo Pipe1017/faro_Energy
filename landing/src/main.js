@@ -5,7 +5,7 @@ const nav    = document.querySelector('.nav')
 const burger = document.getElementById('nav-burger')
 
 window.addEventListener('scroll', () => {
-  nav.classList.toggle('scrolled', window.scrollY > 40)
+  nav?.classList.toggle('scrolled', window.scrollY > 40)
 })
 
 burger?.addEventListener('click', () => {
@@ -64,7 +64,7 @@ function calcROI() {
 
 hoursRange?.addEventListener('input', calcROI)
 priceRange?.addEventListener('input', calcROI)
-calcROI()
+if (hoursRange && priceRange) calcROI()   // solo en la página que tiene la calculadora
 
 // ── Reveal on scroll ──────────────────────────────────────────────────────────
 const observer = new IntersectionObserver(
