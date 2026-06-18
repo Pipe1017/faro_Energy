@@ -194,11 +194,12 @@ class ChargePoint(cp):
 
 # Tipos de alerta que ademas se envian por correo (los de alta señal; los
 # frecuentes como SESSION_STARTED/COMPLETED quedan solo in-app para no spamear).
-EMAIL_ALERT_TYPES = {"CHARGER_OFFLINE", "SETTLEMENT_SENT", "PAYMENT_UNPAID"}
+EMAIL_ALERT_TYPES = {"CHARGER_OFFLINE", "SETTLEMENT_SENT", "PAYMENT_UNPAID", "SUBSCRIPTION_CHARGED"}
 EMAIL_ALERT_TITLES = {
     "CHARGER_OFFLINE": "Tu cargador está fuera de línea",
     "SETTLEMENT_SENT": "Te enviamos tu liquidación",
     "PAYMENT_UNPAID":  "Un cobro quedó pendiente",
+    "SUBSCRIPTION_CHARGED": "Cobramos tu mensualidad de plataforma",
 }
 
 
@@ -579,6 +580,9 @@ async def bill_owner_subscription(db: AsyncSession, owner: User, period: str | N
 
     owner.subscription_active = True
     owner.subscription_paid_until = _next_period_start(datetime.now(BOGOTA))
+    _notify_owner(db, owner.id, "SUBSCRIPTION_CHARGED",
+                  f"Cobramos tu mensualidad de plataforma de {period}: ${total:,} COP "
+                  f"(IVA incl.). Tus {n} cargador(es) siguen activos.")
     await db.commit()
     logger.info(f"Mensualidad {period} cobrada a {owner.email}: ${total:,} (tx {wid})")
     return {"ok": True, "status": "APPROVED", "period": period, "chargers": n,
