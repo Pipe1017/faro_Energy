@@ -205,10 +205,14 @@ class ChargePoint(cp):
         logger.info(f"[{self.id}] Sesión terminada — tx#{transaction_id}")
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, self.id)
-            if charger:
+            # Idempotente: si la sesión ya se finalizó (fallback/parada manual), no
+            # crear una sesión fantasma ni cobrar dos veces.
+            if charger and charger.active_transaction:
                 kwh = (meter_stop - (charger.meter_start or 0)) / 1000
                 await _finalize_session(db, charger, kwh)
                 await db.commit()
+            else:
+                logger.info(f"[{self.id}] StopTransaction ignorado (sesión ya finalizada)")
         return call_result.StopTransactionPayload(id_tag_info={"status": "Accepted"})
 
 
@@ -690,14 +694,34 @@ _wallet_stop_sent: set[str] = set()
 _session_progress: dict[str, tuple[float, datetime]] = {}
 
 
+async def _finalize_fallback(charge_point_id: str, grace: int = 30):
+    """Red de seguridad: si tras pedir RemoteStop el cargador NO envía su
+    StopTransaction en `grace` s, finaliza la sesión del lado servidor (con el
+    último consumo medido) para que SIEMPRE se cobre y se libere el cargador.
+    Idempotente: si el StopTransaction sí llegó, active_transaction ya es None y no hace nada."""
+    await asyncio.sleep(grace)
+    try:
+        async with AsyncSessionLocal() as db:
+            charger = await db.get(Charger, charge_point_id)
+            if charger and charger.active_transaction:
+                logger.warning(f"[{charge_point_id}] Sin StopTransaction en {grace}s — "
+                               f"finalizando del lado servidor ({charger.current_kwh or 0} kWh)")
+                await _finalize_session(db, charger, charger.current_kwh or 0.0)
+                await db.commit()
+    except Exception as e:
+        logger.warning(f"[{charge_point_id}] fallback de finalización: {e}")
+
+
 async def _stop_charge(charger: Charger, reason: str) -> bool:
-    """Envía RemoteStop al cargador físico. True si se envió."""
+    """Envía RemoteStop al cargador físico y programa un fallback de finalización
+    por si el StopTransaction no llega. True si se envió el comando."""
     conn = connected_chargers.get(charger.id)
     if not conn or not charger.active_transaction:
         return False
     try:
         await conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
         logger.info(f"[{charger.id}] RemoteStop ({reason})")
+        asyncio.create_task(_finalize_fallback(charger.id))
         return True
     except Exception as e:
         logger.warning(f"[{charger.id}] No se pudo enviar RemoteStop ({reason}): {e}")
@@ -770,17 +794,10 @@ async def _enforce_wallet_limit(db: AsyncSession, charger: Charger):
     if cost_cents < bal - margin_cents:
         return
 
-    conn = connected_chargers.get(charger.id)
-    if not conn:
-        return
     _wallet_stop_sent.add(charger.id)
-    try:
-        await conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
-        logger.info(f"[{charger.id}] Corte por saldo: costo ${m['total']:,} ≈ saldo ${bal // 100:,} "
-                    f"(colchón ${margin_cents // 100:,}) → RemoteStop")
-    except Exception as e:
+    if not await _stop_charge(charger, f"saldo: costo ${m['total']:,} ≈ ${bal // 100:,} "
+                                       f"(colchón ${margin_cents // 100:,})"):
         _wallet_stop_sent.discard(charger.id)
-        logger.warning(f"[{charger.id}] No se pudo cortar por saldo: {e}")
 
 
 async def _settle_owner(db: AsyncSession, owner_id: str, min_cop: int) -> dict:

@@ -7,7 +7,7 @@ import { styles } from '../styles';
 
 export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
   const color   = STATUS_COLOR[charger.status] || T.offline;
-  const price   = Math.round((charger.price_per_kwh_now ?? charger.price_per_kwh ?? 0) * 1.10 * 1.19 * 1.03);
+  const price   = Math.round((charger.price_per_kwh_now ?? charger.price_per_kwh ?? 0) * 1.19);
   const isCharg = charger.status === 'Charging';
 
   // Lejos → solo bolita de color (mismo comportamiento que antes)
@@ -43,12 +43,13 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
           {/* Bolita de estado si está cargando */}
           {isCharg && <View style={[styles.mapBubbleStatusDot, { backgroundColor: color }]} />}
           <Text style={{ color: priceColor, fontWeight: '800', fontSize: 15, letterSpacing: -0.3 }}>
-            {price > 0 ? `$${price.toLocaleString('es-CO')}` : charger.status}
+            {price > 0 ? `$${price.toLocaleString('es-CO')}/kWh` : charger.status}
           </Text>
-          {/* Info extra al acercarse o seleccionar */}
-          {(zoom === 'close' || isSelected) && charger.connector_type && (
+          {/* Potencia y tipo de enchufe en la burbuja flotante */}
+          {(charger.power_kw || charger.connector_type) && (
             <Text style={{ color: specColor, fontSize: 11, marginTop: 1 }}>
-              {charger.power_kw}kW · {charger.connector_type}
+              {[charger.power_kw ? `${charger.power_kw} kW` : null, charger.connector_type]
+                .filter(Boolean).join(' · ')}
             </Text>
           )}
         </View>
