@@ -438,6 +438,61 @@ async def list_users(_: User = Depends(require_admin), db: AsyncSession = Depend
     return out
 
 
+@router.get("/users/{user_id}")
+async def user_detail(user_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Resumen e historial de un usuario (para el back-office)."""
+    u = await db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    data = {
+        "id": u.id, "name": u.name, "email": u.email, "role": u.role, "tag": u.tag,
+        "email_verified": u.email_verified,
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+    }
+
+    if u.role == "conductor":
+        wallet = await _wallet_balance_cents(db, u.id)
+        sess = (await db.execute(
+            select(Session).where(Session.session_user == u.email)
+            .order_by(Session.ended_at.desc().nullslast(), Session.id.desc())
+        )).scalars().all()
+        spent = sum(int(s.total_charged or 0) for s in sess)
+        kwh   = sum(float(s.kwh_delivered or 0) for s in sess)
+        wtx = (await db.execute(
+            select(WalletTransaction).where(WalletTransaction.user_id == u.id)
+            .order_by(WalletTransaction.created_at.desc()).limit(20)
+        )).scalars().all()
+        data["conductor"] = {
+            "wallet_cop": wallet // 100,
+            "sessions_total": len(sess),
+            "kwh_total": round(kwh, 2),
+            "spent_total_cop": spent,
+            "sessions": [{
+                "charger_id": s.charger_id,
+                "kwh": round(float(s.kwh_delivered or 0), 2),
+                "cost_cop": int(s.total_charged or 0),
+                "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+            } for s in sess[:20]],
+            "wallet_tx": [{
+                "type": t.type,
+                "amount_cop": int(t.amount_cents or 0) // 100,
+                "description": t.description,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            } for t in wtx],
+        }
+    elif u.role == "owner":
+        chargers = (await db.execute(select(Charger).where(Charger.owner_id == u.id))).scalars().all()
+        balance = await _owner_balance_cents(db, u.id)
+        data["owner"] = {
+            "subscription_active": u.subscription_active,
+            "subscription_paid_until": u.subscription_paid_until.isoformat() if u.subscription_paid_until else None,
+            "chargers_total": len(chargers),
+            "balance_cop": balance // 100,
+            "monthly_fee_cop": monthly_fee_cop(len(chargers)),
+        }
+    return data
+
+
 async def _delete_user_clean(db: AsyncSession, u: User):
     """Borra un usuario y sus filas hijas NO financieras (tarjetas, cuenta de
     dispersión, eventos, reservas). Asume que ya se verificó que no tiene huella."""

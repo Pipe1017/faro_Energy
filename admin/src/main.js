@@ -103,7 +103,7 @@ function renderApp() {
     </div>`;
   document.getElementById('logout').addEventListener('click', logout);
   app.querySelectorAll('.nav').forEach((b) =>
-    b.addEventListener('click', () => { state.tab = b.dataset.tab; state.ownerDetail = null; renderApp(); }));
+    b.addEventListener('click', () => { state.tab = b.dataset.tab; state.ownerDetail = null; state.userDetail = null; renderApp(); }));
   renderTab();
 }
 
@@ -124,7 +124,10 @@ async function renderTab() {
       if (state.ownerDetail) { renderOwnerDetail(view); }
       else { state.owners = await api('/admin/owners'); renderDuenos(view); }
     }
-    else if (state.tab === 'usuarios') { state.users = await api('/admin/users'); renderUsuarios(view); }
+    else if (state.tab === 'usuarios') {
+      if (state.userDetail) { renderUserDetail(view); }
+      else { state.users = await api('/admin/users'); renderUsuarios(view); }
+    }
   } catch (err) {
     view.innerHTML = `<div class="error-box">${err.message}</div>`;
   }
@@ -406,12 +409,16 @@ function renderOwnerDetail(view) {
       </tbody>
     </table>
 
-    <div class="section-title">Cargadores (${o.chargers.length})</div>
+    <div class="section-title">Cargadores (${o.chargers.length}) · ${o.subscription_active
+      ? '<span class="badge ok">activos por mensualidad</span>'
+      : '<span class="badge danger">desactivados por mensualidad</span>'}</div>
     <table>
-      <thead><tr><th>ID</th><th>Lugar</th><th>kW</th><th>Precio</th><th>Estado</th></tr></thead>
+      <thead><tr><th>ID</th><th>Lugar</th><th>kW</th><th>Precio</th><th>Mensualidad</th><th>Conexión</th></tr></thead>
       <tbody>
         ${o.chargers.map((c) => `<tr><td>${c.id}</td><td class="muted">${c.location}</td><td>${c.power_kw}</td>
-          <td>${cop(c.price)}</td><td>${c.online ? '<span class="badge ok">En línea</span>' : '<span class="badge danger">Offline</span>'}</td></tr>`).join('')}
+          <td>${cop(c.price)}</td>
+          <td>${o.subscription_active ? '<span class="badge ok">Activo</span>' : '<span class="badge danger">Oculto</span>'}</td>
+          <td>${c.online ? '<span class="badge ok">En línea</span>' : '<span class="badge danger">Offline</span>'}</td></tr>`).join('')}
       </tbody>
     </table>`;
 
@@ -500,11 +507,12 @@ function renderUsuarios(view) {
       <span class="muted">${users.length} usuarios · ${unverified.length} sin verificar</span>
       ${unverified.length ? `<button class="mini del" id="cleanup" style="margin-left:auto;">Limpiar no verificados (${unverified.length})</button>` : ''}
     </div>
+    <p class="muted" style="margin-bottom:10px;">Toca un usuario para ver su historial.</p>
     <table>
       <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Saldo</th><th>Verificación</th><th>Creado</th><th></th></tr></thead>
       <tbody>
         ${users.map((u) => `
-          <tr>
+          <tr class="clickable" data-user="${u.id}">
             <td>${u.name}</td>
             <td class="muted">${u.email}</td>
             <td>${u.role}${u.role === 'admin' ? ' <span class="badge muted">admin</span>' : ''}</td>
@@ -518,6 +526,12 @@ function renderUsuarios(view) {
           </tr>`).join('')}
       </tbody>
     </table>`;
+
+  view.querySelectorAll('[data-user]').forEach((r) => r.addEventListener('click', async (e) => {
+    if (e.target.closest('button')) return;   // no abrir si tocó un botón de acción
+    try { state.userDetail = await api(`/admin/users/${r.dataset.user}`); renderTab(); }
+    catch (err) { alert(err.message); }
+  }));
 
   view.querySelectorAll('[data-bono]').forEach((b) => b.addEventListener('click', async () => {
     const raw = prompt('Crédito/bono al saldo del conductor (COP). Negativo para ajustar:');
@@ -552,6 +566,71 @@ function renderUsuarios(view) {
     try { await api(`/admin/users/${b.dataset.del}`, { method: 'DELETE' }); renderTab(); }
     catch (err) { alert(err.message); b.disabled = false; }
   }));
+}
+
+function renderUserDetail(view) {
+  const u = state.userDetail;
+  const txLabel = { TOPUP: 'Recarga', CHARGE: 'Carga', REFUND: 'Devolución', BONUS: 'Bono' };
+  let body = '';
+
+  if (u.role === 'conductor' && u.conductor) {
+    const c = u.conductor;
+    body = `
+      <div class="section-title">Resumen</div>
+      <div class="cards">
+        ${card('Saldo actual', cop(c.wallet_cop), 'wallet prepago', 'accent')}
+        ${card('Cargas', c.sessions_total, `${c.kwh_total} kWh en total`)}
+        ${card('Gasto histórico', cop(c.spent_total_cop), 'total cobrado')}
+      </div>
+
+      <div class="section-title">Movimientos de saldo</div>
+      <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead>
+        <tbody>
+          ${c.wallet_tx.length === 0 ? `<tr><td colspan="4" class="empty">Sin movimientos</td></tr>` :
+            c.wallet_tx.map((t) => `<tr>
+              <td class="muted">${fmtTime(t.created_at)}</td>
+              <td>${txLabel[t.type] || t.type}</td>
+              <td class="muted">${t.description || ''}</td>
+              <td style="color:${t.amount_cop < 0 ? '#b91c1c' : '#15803d'};font-weight:700;">${t.amount_cop < 0 ? '' : '+'}${cop(t.amount_cop)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="section-title">Historial de cargas</div>
+      <table>
+        <thead><tr><th>Fecha</th><th>Cargador</th><th>kWh</th><th>Cobrado</th></tr></thead>
+        <tbody>
+          ${c.sessions.length === 0 ? `<tr><td colspan="4" class="empty">Sin cargas</td></tr>` :
+            c.sessions.map((s) => `<tr>
+              <td class="muted">${fmtTime(s.ended_at)}</td>
+              <td>${s.charger_id}</td>
+              <td>${s.kwh}</td>
+              <td>${cop(s.cost_cop)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } else if (u.role === 'owner' && u.owner) {
+    const o = u.owner;
+    body = `
+      <div class="section-title">Dueño</div>
+      <div class="cards">
+        ${card('Mensualidad', o.subscription_active ? 'Activo' : 'Suspendido', o.subscription_active ? 'cargadores habilitados' : 'cargadores ocultos', o.subscription_active ? 'ok' : 'danger')}
+        ${card('Cargadores', o.chargers_total)}
+        ${card('Saldo por pagar', cop(o.balance_cop), '', 'accent')}
+      </div>
+      <p class="muted">Para el estado de cuenta completo y cobrar la mensualidad, ve a la pestaña <b>Dueños</b>.</p>`;
+  } else {
+    body = `<p class="muted">Usuario administrador.</p>`;
+  }
+
+  view.innerHTML = `
+    <button class="mini" id="back" style="background:none;color:#b45309;padding:0;margin-bottom:14px;">← Volver a usuarios</button>
+    <h1>${u.name}</h1>
+    <p class="muted" style="margin-bottom:14px;">${u.email} · ${u.role} · ${u.email_verified ? 'Verificado' : 'Sin verificar'} · desde ${fmtTime(u.created_at)}</p>
+    ${body}`;
+
+  document.getElementById('back').addEventListener('click', () => { state.userDetail = null; renderTab(); });
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────

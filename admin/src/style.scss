@@ -25,9 +25,9 @@ body {
   span { color: $cobre; }
 }
 .brand-sub { color: $muted; font-size: .82rem; margin-top: 2px; }
-.brand-logo { height: 30px; width: auto; display: block; }
-.login-card .brand-logo { height: 42px; margin: 0 auto 6px; }
-.side .brand-logo { margin: 0 .25rem 1.4rem; height: 28px; }
+.brand-logo { height: 48px; width: auto; display: block; }
+.login-card .brand-logo { height: 64px; margin: 0 auto 10px; }
+.side .brand-logo { margin: 0 .25rem 1.4rem; height: 44px; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: $marfil; }
 
