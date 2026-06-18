@@ -50,6 +50,10 @@ async def reserve_charger(
         raise HTTPException(400, "Cargador no disponible para separar")
     if charger.owner_id == current_user.id:
         raise HTTPException(400, "No puedes separar tu propio cargador")
+    if charger.owner_id:
+        owner = await db.get(User, charger.owner_id)
+        if owner and not owner.subscription_active:
+            raise HTTPException(400, "Cargador no disponible")
 
     # No separar con cobros fallidos pendientes (igual que iniciar sesión)
     unpaid = await db.execute(

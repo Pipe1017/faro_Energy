@@ -21,7 +21,7 @@ from models import (User, Charger, Session, Reservation, PaymentMethod,
 import wompi as wompi_svc
 import emailer
 from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
-                    CHARGE_MAX_ATTEMPTS, OFFLINE_SESSION_TIMEOUT, MIN_WITHDRAW_COP,
+                    CHARGE_MAX_ATTEMPTS, OFFLINE_SESSION_TIMEOUT, IDLE_SESSION_TIMEOUT, MIN_WITHDRAW_COP,
                     SETTLEMENT_DAYS, SETTLE_CHECK_INTERVAL, BOGOTA, _PERIOD_HOURS,
                     RESERVE_MINUTES, RESERVE_GRACE_MINUTES, RESERVE_FEE_FACTOR,
                     RESERVE_FEE_MIN_COP, RESERVE_FEE_CAP_COP, RESERVE_CONVENIENCE_COP,
@@ -124,7 +124,36 @@ class ChargePoint(cp):
 
     @on(Action.Authorize)
     async def on_authorize(self, id_tag, **kwargs):
-        return call_result.AuthorizePayload(id_tag_info={"status": "Accepted"})
+        """Autorización OCPP (también cubre tarjetas RFID físicas). Fail-closed:
+        solo autoriza a un usuario registrado, sin deuda, con dueño al día y saldo
+        suficiente. Es la última barrera además de /payments/initiate."""
+        status = "Accepted"
+        try:
+            async with AsyncSessionLocal() as db:
+                user = (await db.execute(
+                    select(User).where(User.tag == id_tag).limit(1)
+                )).scalar_one_or_none()
+                charger = await db.get(Charger, self.id)
+                if not user:
+                    status = "Invalid"            # tag no registrado → no es flujo soportado
+                else:
+                    unpaid = (await db.execute(
+                        select(PaymentTransaction).where(
+                            PaymentTransaction.user_id == user.id,
+                            PaymentTransaction.status == "UNPAID",
+                        ).limit(1)
+                    )).scalars().first()
+                    owner = await db.get(User, charger.owner_id) if charger and charger.owner_id else None
+                    bal = await _wallet_balance_cents(db, user.id)
+                    if owner and not owner.subscription_active:
+                        status = "Blocked"        # cargador suspendido por mensualidad
+                    elif unpaid:
+                        status = "Blocked"        # deuda anterior sin pagar
+                    elif charger and bal < calc_preauth_cop(charger):
+                        status = "Blocked"        # saldo insuficiente
+        except Exception as e:
+            logger.warning(f"[{self.id}] Authorize: {e}")
+        return call_result.AuthorizePayload(id_tag_info={"status": status})
 
     @on(Action.StartTransaction)
     async def on_start_transaction(self, connector_id, id_tag, meter_start, timestamp, **kwargs):
@@ -147,6 +176,7 @@ class ChargePoint(cp):
                 charger.session_started_at = datetime.now(timezone.utc)
                 charger.current_kwh = 0.0   # resetear al iniciar sesión nueva
                 _wallet_stop_sent.discard(self.id)
+                _session_progress.pop(self.id, None)
                 _notify_owner(db, charger.owner_id, "SESSION_STARTED",
                               f"{self.id}: carga iniciada por {session_user}", self.id)
                 await db.commit()
@@ -341,6 +371,7 @@ async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, fina
     charger.current_kwh = None
     charger.meter_start = None
     _wallet_stop_sent.discard(charger.id)
+    _session_progress.pop(charger.id, None)
     logger.info(f"[{charger.id}] {kwh:.3f}kWh · ingreso:{m['revenue']} · luz:{m['elec_cost']} · neto:{m['net_profit']} COP")
     return session
 
@@ -661,6 +692,60 @@ async def _wallet_balance_cents(db: AsyncSession, user_id: str) -> int:
 # Cargadores a los que ya enviamos el corte por saldo (evita reenviar RemoteStop
 # en cada MeterValue mientras el cargador termina de detenerse).
 _wallet_stop_sent: set[str] = set()
+
+# Progreso de energía por cargador: {id: (last_kwh, momento_del_último_avance)}.
+# Sirve para detectar sesiones inactivas (carro conectado que ya no consume).
+_session_progress: dict[str, tuple[float, datetime]] = {}
+
+
+async def _stop_charge(charger: Charger, reason: str) -> bool:
+    """Envía RemoteStop al cargador físico. True si se envió."""
+    conn = connected_chargers.get(charger.id)
+    if not conn or not charger.active_transaction:
+        return False
+    try:
+        await conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
+        logger.info(f"[{charger.id}] RemoteStop ({reason})")
+        return True
+    except Exception as e:
+        logger.warning(f"[{charger.id}] No se pudo enviar RemoteStop ({reason}): {e}")
+        return False
+
+
+async def _guard_active_sessions(db: AsyncSession):
+    """Watchdog periódico (corre en el loop de cobros, cada ~5 s) sobre TODA sesión
+    activa — independiente de la frecuencia de MeterValues. Defense in depth:
+      1) Corte por saldo (wallet) si el costo alcanza el saldo.
+      2) Timeout de inactividad: si la energía no avanza en IDLE_SESSION_TIMEOUT
+         (carro lleno/conectado), cierra la sesión y libera el cargador.
+      3) Dueño suspendido a mitad de carga → detener.
+    """
+    rows = (await db.execute(
+        select(Charger).where(Charger.active_transaction.isnot(None))
+    )).scalars().all()
+    now = datetime.now(timezone.utc)
+    for charger in rows:
+        if charger.id not in connected_chargers:
+            continue  # offline lo maneja _close_orphan_sessions
+
+        # 3) dueño suspendido durante la carga
+        if charger.owner_id:
+            owner = await db.get(User, charger.owner_id)
+            if owner and not owner.subscription_active:
+                await _stop_charge(charger, "dueño suspendido")
+                continue
+
+        # 1) límite de saldo (también aquí, no solo en MeterValues)
+        await _enforce_wallet_limit(db, charger)
+
+        # 2) inactividad: ¿avanzó la energía?
+        kwh = charger.current_kwh or 0.0
+        prev = _session_progress.get(charger.id)
+        if prev is None or kwh > prev[0] + 0.01:
+            _session_progress[charger.id] = (kwh, now)
+        elif (now - prev[1]).total_seconds() >= IDLE_SESSION_TIMEOUT:
+            if await _stop_charge(charger, f"inactiva {IDLE_SESSION_TIMEOUT}s sin consumo"):
+                _session_progress.pop(charger.id, None)
 
 
 async def _enforce_wallet_limit(db: AsyncSession, charger: Charger):
@@ -1117,6 +1202,11 @@ async def _charge_worker():
             await _close_orphan_sessions()
         except Exception as e:
             logger.warning(f"janitor sesiones huérfanas: {e}")
+        try:
+            async with AsyncSessionLocal() as db:
+                await _guard_active_sessions(db)
+        except Exception as e:
+            logger.warning(f"watchdog sesiones activas: {e}")
 
 
 async def _mark_offline_after_grace(charge_point_id: str, grace: int = 10):

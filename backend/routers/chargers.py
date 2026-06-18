@@ -33,10 +33,15 @@ async def remote_start(
     charge_point_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    """DIAGNÓSTICO (solo admin): arranca una carga sin pasar por el saldo. El flujo
+    real del conductor es /payments/initiate, que valida saldo, deuda y suscripción.
+    Este endpoint NO cobra al wallet, por eso queda restringido a admin."""
+    if current_user.role != "admin":
+        raise HTTPException(403, "Inicia la carga desde la app (se valida tu saldo).")
     charger = connected_chargers.get(charge_point_id)
     if not charger:
         return {"error": "Cargador no conectado"}
-    response = await charger.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.email))
+    response = await charger.call(call.RemoteStartTransactionPayload(connector_id=1, id_tag=current_user.tag or current_user.email[:20]))
     return {"status": response.status}
 
 

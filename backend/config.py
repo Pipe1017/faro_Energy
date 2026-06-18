@@ -13,6 +13,7 @@ WOMPI_FEE_FIXED_COP = 700      # + $700 fijo
 WOMPI_MIN_CENTS         = 150_000  # $1.500 COP — monto mínimo que acepta Wompi
 CHARGE_MAX_ATTEMPTS     = 8        # reintentos de cobro antes de pasar a revisión manual
 OFFLINE_SESSION_TIMEOUT = 300      # s sin señal del cargador antes de cerrar su sesión huérfana
+IDLE_SESSION_TIMEOUT    = int(os.getenv("IDLE_SESSION_TIMEOUT", "900"))  # s sin progreso de kWh (carro lleno/conectado) antes de cerrar la sesión y liberar el cargador
 
 # ── Modelo de plata "bolsas internas" (Modelo A — comisionista) ───────────────
 # El conductor paga SOLO la recarga + IVA. La comisión y la pasarela se DEBITAN
