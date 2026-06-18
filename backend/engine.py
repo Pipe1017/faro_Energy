@@ -137,20 +137,12 @@ class ChargePoint(cp):
                 if not user:
                     status = "Invalid"            # tag no registrado → no es flujo soportado
                 else:
-                    unpaid = (await db.execute(
-                        select(PaymentTransaction).where(
-                            PaymentTransaction.user_id == user.id,
-                            PaymentTransaction.status == "UNPAID",
-                        ).limit(1)
-                    )).scalars().first()
                     owner = await db.get(User, charger.owner_id) if charger and charger.owner_id else None
                     bal = await _wallet_balance_cents(db, user.id)
                     if owner and not owner.subscription_active:
                         status = "Blocked"        # cargador suspendido por mensualidad
-                    elif unpaid:
-                        status = "Blocked"        # deuda anterior sin pagar
                     elif charger and bal < calc_preauth_cop(charger):
-                        status = "Blocked"        # saldo insuficiente
+                        status = "Blocked"        # saldo insuficiente (prepago, sin deuda)
         except Exception as e:
             logger.warning(f"[{self.id}] Authorize: {e}")
         return call_result.AuthorizePayload(id_tag_info={"status": status})
@@ -1026,17 +1018,29 @@ async def _execute_charge(db: AsyncSession, pc: PendingCharge):
         else:
             logger.warning(f"Cobro sesión #{pc.session_id} falló (intento {pc.attempts}) — reintento en {delay}s")
 
-    # 0) Modo WALLET: el conductor paga con su saldo prepago (sin Wompi por sesión)
+    # 0) Modo WALLET: el conductor paga con su saldo prepago (sin Wompi por sesión).
+    #    Prepago = NUNCA hay deuda: si el saldo no alcanza (raro: la carga se corta
+    #    antes), se cobra solo lo que hay y se reescala la sesión a ese monto.
     if pay_tx.payment_type == "WALLET":
         if pc.amount_cents <= 0:
             pc.status = "DONE"; pay_tx.status = "VOID"; return
         bal = await _wallet_balance_cents(db, pay_tx.user_id)
-        if bal < pc.amount_cents:
-            pc.status = "UNPAID"; pay_tx.status = "UNPAID"
-            await _notify_unpaid(db, pc)
-            logger.warning(f"Cobro sesión #{pc.session_id}: saldo insuficiente "
-                           f"(${bal // 100:,} < ${pc.amount_cents // 100:,}) → UNPAID")
+        if bal <= 0:
+            pc.status = "DONE"; pay_tx.status = "VOID"
+            logger.warning(f"Cobro sesión #{pc.session_id}: saldo 0 → sin cobro (VOID), sin deuda")
             return
+        if bal < pc.amount_cents:
+            session = await db.get(Session, pc.session_id)
+            if session:
+                ratio = bal / pc.amount_cents
+                for f in ("total_charged", "commission_cpo", "revenue_owner",
+                          "iva_amount", "net_profit_owner", "electricity_cost"):
+                    v = getattr(session, f, None)
+                    if v is not None:
+                        setattr(session, f, round(v * ratio))
+            logger.warning(f"Cobro sesión #{pc.session_id}: saldo ${bal // 100:,} < "
+                           f"${pc.amount_cents // 100:,} → se cobra el saldo (sin deuda)")
+            pc.amount_cents = bal
         db.add(WalletTransaction(user_id=pay_tx.user_id, type="CHARGE",
                                 amount_cents=-pc.amount_cents, session_id=pc.session_id,
                                 description=f"Carga sesión #{pc.session_id}"))

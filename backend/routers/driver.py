@@ -374,15 +374,6 @@ async def initiate_payment(
     elif charger.status != "Available":
         raise HTTPException(400, "Cargador no disponible")
 
-    # Bloquear si quedó un cobro sin pagar (saldo se quedó corto en una sesión previa)
-    unpaid = await db.execute(
-        select(PaymentTransaction)
-        .where(PaymentTransaction.user_id == current_user.id, PaymentTransaction.status == "UNPAID")
-        .limit(1)
-    )
-    if unpaid.scalars().first():
-        raise HTTPException(402, "Tienes un cobro sin pagar de una sesión anterior. Recarga saldo desde 'Mi saldo'.")
-
     # Verificar saldo suficiente (estimado de la carga)
     estimate = calc_preauth_cop(charger)
     balance = await _wallet_balance_cents(db, current_user.id)
