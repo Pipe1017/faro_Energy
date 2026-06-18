@@ -194,8 +194,10 @@ class ChargePoint(cp):
                     charger.current_kwh = max(0.0, session_kwh)
                     await db.commit()
                     logger.info(f"[{self.id}] MeterValues: {wh:.0f}Wh → {charger.current_kwh:.3f} kWh")
-                    # Seguridad wallet: cortar si el costo alcanza el saldo prepago
-                    await _enforce_wallet_limit(db, charger)
+                    # OJO: el corte por saldo NO se hace aquí. Enviar un RemoteStop
+                    # (conn.call) dentro de un handler OCPP bloquea el loop de recepción
+                    # y produce timeout. Lo hace el watchdog _guard_active_sessions
+                    # (cada ~5 s, fuera del handler).
         except Exception as e:
             logger.warning(f"[{self.id}] Error MeterValues: {e}")
         return call_result.MeterValuesPayload()
@@ -203,16 +205,9 @@ class ChargePoint(cp):
     @on(Action.StopTransaction)
     async def on_stop_transaction(self, meter_stop, timestamp, transaction_id, **kwargs):
         logger.info(f"[{self.id}] Sesión terminada — tx#{transaction_id}")
-        async with AsyncSessionLocal() as db:
-            charger = await db.get(Charger, self.id)
-            # Idempotente: si la sesión ya se finalizó (fallback/parada manual), no
-            # crear una sesión fantasma ni cobrar dos veces.
-            if charger and charger.active_transaction:
-                kwh = (meter_stop - (charger.meter_start or 0)) / 1000
-                await _finalize_session(db, charger, kwh)
-                await db.commit()
-            else:
-                logger.info(f"[{self.id}] StopTransaction ignorado (sesión ya finalizada)")
+        # Finalización idempotente + con candado (evita sesiones/cobros duplicados).
+        if not await _finalize_charger(self.id, meter_stop=meter_stop):
+            logger.info(f"[{self.id}] StopTransaction ignorado (sesión ya finalizada)")
         return call_result.StopTransactionPayload(id_tag_info={"status": "Accepted"})
 
 
@@ -694,20 +689,43 @@ _wallet_stop_sent: set[str] = set()
 _session_progress: dict[str, tuple[float, datetime]] = {}
 
 
-async def _finalize_fallback(charge_point_id: str, grace: int = 30):
-    """Red de seguridad: si tras pedir RemoteStop el cargador NO envía su
-    StopTransaction en `grace` s, finaliza la sesión del lado servidor (con el
-    último consumo medido) para que SIEMPRE se cobre y se libere el cargador.
-    Idempotente: si el StopTransaction sí llegó, active_transaction ya es None y no hace nada."""
-    await asyncio.sleep(grace)
-    try:
+# Candado por cargador: serializa el cierre de sesión para que NUNCA se finalice
+# (y cobre) dos veces aunque varias rutas de parada corran a la vez.
+_finalize_locks: dict[str, asyncio.Lock] = {}
+
+def _finalize_lock(charge_point_id: str) -> asyncio.Lock:
+    if charge_point_id not in _finalize_locks:
+        _finalize_locks[charge_point_id] = asyncio.Lock()
+    return _finalize_locks[charge_point_id]
+
+
+async def _finalize_charger(charge_point_id: str, meter_stop: float | None = None,
+                            final_status: str = "Available") -> bool:
+    """Finaliza la sesión de un cargador UNA sola vez (idempotente + con candado).
+    Si meter_stop viene (StopTransaction) usa ese consumo; si no, el último medido.
+    Devuelve True si esta llamada fue la que finalizó."""
+    async with _finalize_lock(charge_point_id):
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, charge_point_id)
-            if charger and charger.active_transaction:
-                logger.warning(f"[{charge_point_id}] Sin StopTransaction en {grace}s — "
-                               f"finalizando del lado servidor ({charger.current_kwh or 0} kWh)")
-                await _finalize_session(db, charger, charger.current_kwh or 0.0)
-                await db.commit()
+            if not charger or not charger.active_transaction:
+                return False   # ya finalizada por otra ruta → no duplicar el cobro
+            if meter_stop is not None:
+                kwh = (meter_stop - (charger.meter_start or 0)) / 1000
+            else:
+                kwh = charger.current_kwh or 0.0
+            await _finalize_session(db, charger, max(0.0, kwh), final_status=final_status)
+            await db.commit()
+            return True
+
+
+async def _finalize_fallback(charge_point_id: str, grace: int = 30):
+    """Red de seguridad: si tras pedir RemoteStop el cargador NO envía su
+    StopTransaction en `grace` s, finaliza del lado servidor para que SIEMPRE se
+    cobre y se libere. Idempotente por el candado: si ya se finalizó, no hace nada."""
+    await asyncio.sleep(grace)
+    try:
+        if await _finalize_charger(charge_point_id):
+            logger.warning(f"[{charge_point_id}] Sin StopTransaction en {grace}s — finalizado del lado servidor")
     except Exception as e:
         logger.warning(f"[{charge_point_id}] fallback de finalización: {e}")
 
@@ -787,9 +805,12 @@ async def _enforce_wallet_limit(db: AsyncSession, charger: Charger):
     m = session_money(charger.current_kwh or 0.0, charger, charger.session_started_at, responsable_iva)
     cost_cents = m["total"] * 100
 
-    # Colchón adaptado a la potencia: energía que podría entrar en ~2 min a tope
+    # Colchón = energía de ~1 min a la potencia del cargador, pero ACOTADO entre el
+    # 5% y el 25% del saldo (si no, un cargador de mucha potencia con saldo bajo
+    # cortaría al instante, como pasó con el sim de 150 kW).
     price_user = (charger.price_at(charger.session_started_at) or 1000) * (1 + (IVA_RATE if responsable_iva else 0))
-    margin_cents = max(round((charger.power_kw or 7.0) * (2 / 60) * price_user) * 100, int(bal * 0.03))
+    power_margin = round((charger.power_kw or 7.0) * (1 / 60) * price_user) * 100
+    margin_cents = min(max(power_margin, int(bal * 0.05)), int(bal * 0.25))
 
     if cost_cents < bal - margin_cents:
         return
@@ -1149,18 +1170,13 @@ async def _close_orphan_sessions():
     usando el último consumo medido (current_kwh se persiste en cada MeterValue)."""
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Charger).where(Charger.active_transaction.isnot(None)))
-        now = datetime.now(timezone.utc)
-        for charger in result.scalars().all():
-            if charger.id in connected_chargers:
-                continue
-            if charger.last_seen and (now - charger.last_seen).total_seconds() < OFFLINE_SESSION_TIMEOUT:
-                continue
-            logger.warning(
-                f"[{charger.id}] Sesión huérfana ({OFFLINE_SESSION_TIMEOUT}s offline) — "
-                f"cerrando con último consumo medido: {charger.current_kwh or 0} kWh"
-            )
-            await _finalize_session(db, charger, charger.current_kwh or 0.0, final_status="Offline")
-        await db.commit()
+        candidates = [c for c in result.scalars().all()
+                      if c.id not in connected_chargers
+                      and not (c.last_seen and (datetime.now(timezone.utc) - c.last_seen).total_seconds() < OFFLINE_SESSION_TIMEOUT)]
+    # Finalizar con candado idempotente (fuera del bucle de lectura)
+    for charger in candidates:
+        logger.warning(f"[{charger.id}] Sesión huérfana ({OFFLINE_SESSION_TIMEOUT}s offline) — cerrando")
+        await _finalize_charger(charger.id, final_status="Offline")
 
 
 OFFLINE_ALERT_MIN = 30  # minutos offline antes de alertar al dueño

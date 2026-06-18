@@ -20,7 +20,7 @@ import wompi as wompi_svc
 import sim as sim_mgr
 from config import *
 from state import connected_chargers
-from engine import (_finalize_session, _finalize_fallback, _settle_captured, _owner_balance_cents,
+from engine import (_finalize_session, _finalize_fallback, _finalize_charger, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
                     _mark_offline_after_grace)
@@ -63,19 +63,22 @@ async def remote_stop(
     if not (is_session_user or is_owner or is_admin):
         raise HTTPException(403, "No puedes detener una carga que no es tuya")
 
+    import asyncio
     charger_conn = connected_chargers.get(charge_point_id)
     if not charger_conn:
         # Cargador sin conexión: cerrar la sesión con el último consumo medido
-        # y encolar el cobro — el conductor paga solo lo que se alcanzó a medir
-        await _finalize_session(db, charger, charger.current_kwh or 0.0, final_status="Offline")
-        await db.commit()
+        # (idempotente con candado) — el conductor paga solo lo que se alcanzó a medir
+        await _finalize_charger(charge_point_id, final_status="Offline")
         return {"error": "Cargador sin conexión — sesión cerrada con el último consumo medido", "manual": True}
-    response = await charger_conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
+    try:
+        response = await charger_conn.call(call.RemoteStopTransactionPayload(transaction_id=charger.active_transaction))
+        status = response.status
+    except Exception:
+        status = "Pending"
     # Red de seguridad: si el cargador no manda su StopTransaction, finalizamos del
-    # lado servidor para que SIEMPRE se cobre y se libere (idempotente).
-    import asyncio
+    # lado servidor para que SIEMPRE se cobre y se libere (idempotente con candado).
     asyncio.create_task(_finalize_fallback(charge_point_id))
-    return {"status": response.status}
+    return {"status": status}
 
 
 # ── MIS CARGADORES (dueños) ───────────────────────────────────────────────────

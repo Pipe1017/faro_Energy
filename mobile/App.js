@@ -82,6 +82,7 @@ export default function App() {
   const [geoResults, setGeoResults] = useState([]);  // resultados de lugares reales
   const [zoom, setZoom]             = useState('mid');
   const mapRef                      = useRef(null);
+  const stoppingRef                 = useRef(false);   // guard de doble "Detener"
   const { coords: userCoords, status: locStatus, loading: locLoading, request: requestLocation } = useUserLocation();
   const stripRef                    = useRef(null);
   const geoTimeout                  = useRef(null);
@@ -746,9 +747,11 @@ export default function App() {
   };
 
   const remoteStop = async (chargerId) => {
+    if (stoppingRef.current) return;   // evita disparar varias paradas (cobros duplicados)
+    stoppingRef.current = true;
     try {
       const data = await apiFetch(`/remote-stop/${chargerId}`, { method: 'POST' }, token);
-      if (data.error && !data.manual) { Alert.alert('Error', data.error); return; }
+      if (data.error && !data.manual) { Alert.alert('Error', data.error); stoppingRef.current = false; return; }
 
       const finalKwh  = sessionKwh;
       const finalCost = sessionCost;
@@ -768,6 +771,8 @@ export default function App() {
       }, 600);
     } catch (e) {
       Alert.alert('Error', e.message);
+    } finally {
+      stoppingRef.current = false;
     }
   };
 
