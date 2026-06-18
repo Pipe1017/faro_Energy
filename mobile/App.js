@@ -43,6 +43,7 @@ export default function App() {
   const [wallet, setWallet]               = useState(null);   // saldo prepago
   const [recargaModal, setRecargaModal]   = useState(false);
   const [recargaAmount, setRecargaAmount] = useState(50000);
+  const [recargando, setRecargando]       = useState(false);   // bloquea doble-recarga
   const [payMethodsModal, setPayMethodsModal] = useState(null);
   const [confirmPayModal, setConfirmPayModal] = useState(null); // { method, charger }
   const [addMethodModal, setAddMethodModal]   = useState(null); // 'card' | 'nequi'
@@ -508,8 +509,10 @@ export default function App() {
     }
   };
 
-  // Recargar saldo (1 cargo a la tarjeta guardada)
+  // Recargar saldo (1 cargo a la tarjeta guardada). Bloquea doble-submit.
   const doTopup = async (amount_cop, method) => {
+    if (recargando) return;
+    setRecargando(true);
     try {
       const r = await apiFetch('/wallet/topup', {
         method: 'POST', body: JSON.stringify({ amount_cop, payment_method_id: method.id }),
@@ -518,6 +521,7 @@ export default function App() {
       Alert.alert('¡Recarga exitosa!', `Tu saldo ahora es $ ${r.balance_cop.toLocaleString('es-CO')} COP.`);
       fetchWallet();
     } catch (e) { Alert.alert('No se pudo recargar', e.message); }
+    finally { setRecargando(false); }
   };
 
   // Pagar con método seleccionado
@@ -2415,15 +2419,15 @@ export default function App() {
       {/* ── Recargar saldo (wallet) ── */}
       {recargaModal && (
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setRecargaModal(false)} activeOpacity={1} />
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => !recargando && setRecargaModal(false)} activeOpacity={1} />
           <View style={styles.modal}>
             <View style={styles.mapPanelHandle} />
             <Text style={styles.modalTitle}>Recargar saldo</Text>
             <Text style={[styles.mapPanelLocation, { marginBottom: 16 }]}>Saldo actual: $ {(wallet?.balance_cop ?? 0).toLocaleString('es-CO')} COP</Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
               {[20000, 50000, 100000].map(a => (
-                <TouchableOpacity key={a} onPress={() => setRecargaAmount(a)}
-                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1.5,
+                <TouchableOpacity key={a} disabled={recargando} onPress={() => setRecargaAmount(a)}
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, opacity: recargando ? 0.5 : 1,
                     borderColor: recargaAmount === a ? T.green : T.cardBorder,
                     backgroundColor: recargaAmount === a ? T.greenFaint : T.surface }}>
                   <Text style={{ color: recargaAmount === a ? T.green : T.textPri, fontWeight: '700' }}>$ {a / 1000}k</Text>
@@ -2437,15 +2441,15 @@ export default function App() {
               </TouchableOpacity>
             ) : (
               paymentMethods.map(m => (
-                <TouchableOpacity key={m.id} style={styles.methodRow} onPress={() => doTopup(recargaAmount, m)}>
+                <TouchableOpacity key={m.id} style={[styles.methodRow, recargando && { opacity: 0.5 }]} disabled={recargando} onPress={() => doTopup(recargaAmount, m)}>
                   <Feather name="credit-card" size={18} color={T.textMuted} />
                   <Text style={{ color: T.textPri, flex: 1, marginLeft: 10 }}>{m.display}</Text>
-                  <Feather name="chevron-right" size={16} color={T.textMuted} />
+                  {recargando ? <ActivityIndicator size="small" color={T.green} /> : <Feather name="chevron-right" size={16} color={T.textMuted} />}
                 </TouchableOpacity>
               ))
             )}
-            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 16 }]} onPress={() => setRecargaModal(false)}>
-              <Text style={[styles.btnText, { color: T.textMuted }]}>Cancelar</Text>
+            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 16 }]} disabled={recargando} onPress={() => setRecargaModal(false)}>
+              <Text style={[styles.btnText, { color: T.textMuted }]}>{recargando ? 'Recargando…' : 'Cancelar'}</Text>
             </TouchableOpacity>
           </View>
         </View>
