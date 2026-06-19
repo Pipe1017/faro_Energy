@@ -2907,8 +2907,10 @@ export default function App() {
               );
             })()}
 
-            {/* Desglose */}
+            {/* Desglose (comprobante) */}
             {[
+              { label: 'Subtotal (energía)', value: `$ ${((sessionDetail.total_charged || 0) - (sessionDetail.iva_amount || 0)).toLocaleString('es-CO')} COP` },
+              ...((sessionDetail.iva_amount || 0) > 0 ? [{ label: 'IVA', value: `$ ${(sessionDetail.iva_amount || 0).toLocaleString('es-CO')} COP` }] : []),
               { label: 'Total cobrado', value: `$ ${(sessionDetail.total_charged || 0).toLocaleString('es-CO')} COP`, highlight: true },
               { label: 'Precio base', value: `$ ${(sessionDetail.price_per_kwh || 0).toLocaleString('es-CO')} / kWh` },
               { label: 'Duración', value: sessionDetail.started_at
@@ -2946,7 +2948,16 @@ export default function App() {
               </View>
             </View>
 
-            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 16 }]} onPress={() => setSessionDetail(null)}>
+            {sessionDetail.payment_status === 'CAPTURED' && (
+              <TouchableOpacity
+                style={[styles.btn, styles.btnStart, { marginTop: 16 }]}
+                onPress={() => Linking.openURL(`${API_URL}/my-sessions/${sessionDetail.id}/receipt.pdf?token=${token}`)}>
+                <Feather name="file-text" size={15} color="#fdfbf7" />
+                <Text style={styles.btnText}>Ver comprobante (PDF)</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 10 }]} onPress={() => setSessionDetail(null)}>
               <Text style={[styles.btnText, { color: T.textMuted }]}>Cerrar</Text>
             </TouchableOpacity>
           </View>

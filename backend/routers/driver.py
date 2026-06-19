@@ -105,6 +105,35 @@ async def my_sessions(
     }
 
 
+@router.get("/my-sessions/{session_id}/receipt.pdf")
+async def my_session_receipt(session_id: int, token: str, db: AsyncSession = Depends(get_db)):
+    """Comprobante (factura RECARGA) de una carga propia, en PDF. Token va por query
+    para poder abrirlo en el navegador. Solo el conductor dueño de la sesión accede."""
+    from jose import jwt, JWTError
+    from auth import SECRET_KEY, ALGORITHM
+    from models import Invoice
+    import storage, invoicing
+    try:
+        uid = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])["sub"]
+    except (JWTError, KeyError):
+        raise HTTPException(401, "Token inválido")
+    user = await db.get(User, uid)
+    session = await db.get(Session, session_id)
+    if not user or not session or session.session_user != user.email:
+        raise HTTPException(404, "Comprobante no encontrado")
+    inv = (await db.execute(
+        select(Invoice).where(Invoice.session_id == session_id, Invoice.kind == "RECARGA").limit(1)
+    )).scalars().first()
+    if not inv:
+        raise HTTPException(404, "Comprobante aún no disponible")
+    data = invoicing.render_invoice_pdf(inv) if inv.provider == "stub" \
+        else storage.get_bytes(f"invoices/{inv.kind.lower()}/{inv.id}.pdf")
+    if data is None:
+        raise HTTPException(404, "Comprobante aún no disponible")
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="comprobante-{inv.number or inv.id}.pdf"'})
+
+
 
 # ── CALIFICACIÓN DEL CARGADOR (conductor) ─────────────────────────────────────
 
