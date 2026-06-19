@@ -23,7 +23,7 @@ from auth import get_current_user, SECRET_KEY, ALGORITHM
 from config import (ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, BOGOTA,
                     MIN_WITHDRAW_COP, PLATFORM_MARGIN, IVA_RATE, monthly_fee_cop)
 from engine import (_faro_balance_cents, _owner_balance_cents, _settle_lock, _notify_owner,
-                    _wallet_balance_cents, bill_owner_subscription, _owner_card)
+                    _wallet_balance_cents, _refundable_cents, bill_owner_subscription, _owner_card)
 from state import connected_chargers
 import storage
 
@@ -407,6 +407,29 @@ async def wallet_credit(user_id: str, body: WalletCreditBody,
     return {"ok": True, "balance_cop": bal // 100}
 
 
+class RefundBody(BaseModel):
+    note: str | None = None   # referencia del pago: "Nequi 300..." / "Transf. #123"
+
+
+@router.post("/users/{user_id}/refund")
+async def refund_wallet(user_id: str, body: RefundBody,
+                        _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Procesa la devolución del saldo reembolsable (solo dinero propio del conductor,
+    menos el costo de procesamiento; los bonos no se devuelven). Modo MANUAL: tú haces
+    la transferencia y aquí se registra el débito en el wallet (REFUND)."""
+    u = await db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    refundable = await _refundable_cents(db, user_id)
+    if refundable <= 0:
+        raise HTTPException(400, "Este usuario no tiene saldo reembolsable")
+    db.add(WalletTransaction(user_id=user_id, type="REFUND", amount_cents=-refundable,
+                            description="Devolución de saldo" + (f" — {body.note}" if body.note else "")))
+    await db.commit()
+    bal = await _wallet_balance_cents(db, user_id)
+    return {"ok": True, "refunded_cop": refundable // 100, "balance_cop": bal // 100}
+
+
 # ── Usuarios ──────────────────────────────────────────────────────────────────
 
 async def _user_footprint(db: AsyncSession, user_id: str) -> dict:
@@ -464,6 +487,7 @@ async def user_detail(user_id: str, _: User = Depends(require_admin), db: AsyncS
         )).scalars().all()
         data["conductor"] = {
             "wallet_cop": wallet // 100,
+            "refundable_cop": (await _refundable_cents(db, u.id)) // 100,
             "sessions_total": len(sess),
             "kwh_total": round(kwh, 2),
             "spent_total_cop": spent,

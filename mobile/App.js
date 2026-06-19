@@ -510,6 +510,26 @@ export default function App() {
     }
   };
 
+  // Solicitar devolución del saldo reembolsable (se procesa manualmente)
+  const requestRefund = () => {
+    const r = wallet?.refundable_cop ?? 0;
+    const cost = wallet?.refund_cost_cop ?? 0;
+    if (r <= 0) { Alert.alert('Sin saldo reembolsable', 'Solo se devuelve el dinero que recargaste (no los bonos).'); return; }
+    Alert.alert(
+      'Solicitar devolución',
+      `Te devolveremos $ ${r.toLocaleString('es-CO')} COP (tu saldo recargado menos $ ${cost.toLocaleString('es-CO')} de costo de procesamiento; los bonos no se devuelven).\n\nTe contactaremos para hacer la transferencia.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Solicitar', onPress: async () => {
+          try {
+            await apiFetch('/wallet/refund-request', { method: 'POST' }, token);
+            Alert.alert('Solicitud enviada', 'Recibimos tu solicitud. Te contactaremos para devolverte el saldo.');
+          } catch (e) { Alert.alert('No se pudo', e.message); }
+        }},
+      ]
+    );
+  };
+
   // Recargar saldo (1 cargo a la tarjeta guardada). Bloquea doble-submit.
   const doTopup = async (amount_cop, method) => {
     if (recargando) return;
@@ -1010,9 +1030,20 @@ export default function App() {
             <Text style={{ color: T.green, fontSize: 34, fontWeight: '800', marginTop: 2, letterSpacing: -1 }}>
               $ {(wallet?.balance_cop ?? 0).toLocaleString('es-CO')}
             </Text>
+            {wallet && (wallet.balance_cop ?? 0) < (wallet.low_balance_cop ?? 8000) && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: T.warningBg, borderRadius: 8, padding: 8 }}>
+                <Feather name="alert-triangle" size={13} color={T.warningText} />
+                <Text style={{ color: T.warningText, fontSize: 12, flex: 1 }}>Saldo bajo: recarga para seguir cargando.</Text>
+              </View>
+            )}
             <TouchableOpacity style={[styles.btn, styles.btnStart, { marginTop: 12 }]} onPress={() => { setRecargaAmount(wallet?.default_topup_cop || 50000); setRecargaModal(true); }}>
               <Text style={styles.btnText}>Recargar saldo</Text>
             </TouchableOpacity>
+            {wallet && (wallet.refundable_cop ?? 0) > 0 && (
+              <TouchableOpacity onPress={requestRefund} style={{ alignSelf: 'center', marginTop: 10 }}>
+                <Text style={{ color: T.textMuted, fontSize: 12, fontWeight: '600' }}>Solicitar devolución de mi saldo</Text>
+              </TouchableOpacity>
+            )}
             {wallet?.movements?.length > 0 && (
               <View style={{ marginTop: 14 }}>
                 {wallet.movements.slice(0, 4).map(m => (

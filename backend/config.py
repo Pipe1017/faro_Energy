@@ -51,6 +51,11 @@ TERMS_VERSION = os.getenv("TERMS_VERSION", "2026-06-19")
 # ── Wallet / saldo prepago del conductor ──────────────────────────────────────
 WALLET_TOPUP_DEFAULT_COP = int(os.getenv("WALLET_TOPUP_DEFAULT_COP", "50000"))  # recarga sugerida
 WALLET_MIN_TOPUP_COP     = int(os.getenv("WALLET_MIN_TOPUP_COP", "5000"))       # recarga mínima
+WALLET_LOW_BALANCE_COP   = int(os.getenv("WALLET_LOW_BALANCE_COP", "8000"))     # umbral "saldo bajo" (aviso)
+# Devolución de saldo (legal): se reembolsa SOLO lo que el conductor recargó de su
+# bolsillo (los BONUS no se devuelven), menos un costo de procesamiento REAL e
+# informado (pasarela + transferencia). NO es comisión ni multa: es traslado de costo.
+REFUND_PROCESSING_COP    = int(os.getenv("REFUND_PROCESSING_COP", "2000"))
 
 MIN_WITHDRAW_COP        = 1_000    # retiro manual mínimo del dueño
 SETTLEMENT_DAYS         = (5, 20)  # días de corte: giro automático (siguiente día hábil Colombia)

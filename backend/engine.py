@@ -680,6 +680,24 @@ async def _wallet_balance_cents(db: AsyncSession, user_id: str) -> int:
     return int(result.scalar() or 0)
 
 
+async def _refundable_cents(db: AsyncSession, user_id: str) -> int:
+    """Monto que se le puede DEVOLVER al conductor (legal): solo su dinero propio
+    (recargas TOPUP) que no haya consumido, MENOS el costo de procesamiento. Los
+    BONUS no se devuelven. = max(0, recargas_propias − consumido − costo)."""
+    from config import REFUND_PROCESSING_COP
+    topups = int((await db.execute(
+        select(func.coalesce(func.sum(WalletTransaction.amount_cents), 0))
+        .where(WalletTransaction.user_id == user_id, WalletTransaction.type == "TOPUP")
+    )).scalar() or 0)
+    # Todo lo que salió del wallet (cargas + devoluciones previas), en positivo
+    out = int((await db.execute(
+        select(func.coalesce(func.sum(WalletTransaction.amount_cents), 0))
+        .where(WalletTransaction.user_id == user_id, WalletTransaction.amount_cents < 0)
+    )).scalar() or 0)
+    remaining_own = max(0, topups + out)   # out es negativo
+    return max(0, remaining_own - REFUND_PROCESSING_COP * 100)
+
+
 # Cargadores a los que ya enviamos el corte por saldo (evita reenviar RemoteStop
 # en cada MeterValue mientras el cargador termina de detenerse).
 _wallet_stop_sent: set[str] = set()

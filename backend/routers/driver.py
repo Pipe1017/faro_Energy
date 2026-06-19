@@ -24,7 +24,8 @@ from state import connected_chargers
 from engine import (_finalize_session, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
-                    _mark_offline_after_grace, fulfill_reservation_if_any, _wallet_balance_cents)
+                    _mark_offline_after_grace, fulfill_reservation_if_any, _wallet_balance_cents,
+                    _refundable_cents)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -157,6 +158,7 @@ class TopupBody(BaseModel):
 @router.get("/wallet")
 async def my_wallet(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     bal = await _wallet_balance_cents(db, current_user.id)
+    refundable = await _refundable_cents(db, current_user.id)
     movs = await db.execute(
         select(WalletTransaction).where(WalletTransaction.user_id == current_user.id)
         .order_by(WalletTransaction.created_at.desc()).limit(50)
@@ -165,8 +167,32 @@ async def my_wallet(current_user: User = Depends(get_current_user), db: AsyncSes
         "balance_cop": bal // 100,
         "default_topup_cop": WALLET_TOPUP_DEFAULT_COP,
         "min_topup_cop": WALLET_MIN_TOPUP_COP,
+        "low_balance_cop": WALLET_LOW_BALANCE_COP,
+        "refundable_cop": refundable // 100,
+        "refund_cost_cop": REFUND_PROCESSING_COP,
         "movements": [m.to_dict() for m in movs.scalars().all()],
     }
+
+
+@router.post("/wallet/refund-request")
+async def wallet_refund_request(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """El conductor solicita la devolución de su saldo. Se procesa manualmente desde
+    el back-office (mientras Wompi producción permita dispersión automática). Avisa
+    al admin por correo. No mueve plata aquí."""
+    refundable = await _refundable_cents(db, current_user.id)
+    if refundable <= 0:
+        raise HTTPException(400, "No tienes saldo reembolsable.")
+    try:
+        import emailer, os
+        ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
+        if ADMIN_EMAIL:
+            subj = "Solicitud de devolución de saldo"
+            msg = (f"{current_user.name} ({current_user.email}) solicita devolución de "
+                   f"${refundable // 100:,} COP. Procésala en admin → Usuarios.")
+            asyncio.create_task(emailer.send_email(ADMIN_EMAIL, subj, f"<p>{msg}</p>", msg))
+    except Exception as e:
+        logger.warning(f"aviso devolución: {e}")
+    return {"ok": True, "refundable_cop": refundable // 100}
 
 
 @router.post("/wallet/topup")

@@ -583,6 +583,17 @@ function renderUserDetail(view) {
         ${card('Gasto histórico', cop(c.spent_total_cop), 'total cobrado')}
       </div>
 
+      <div class="section-title">Devolución de saldo</div>
+      <div class="card" style="max-width:460px;">
+        <div class="muted" style="font-size:.85rem;margin-bottom:8px;">
+          Reembolsable (solo dinero propio, menos costo de procesamiento; los bonos no se devuelven):
+          <b>${cop(c.refundable_cop ?? 0)}</b>
+        </div>
+        <button class="mini" id="refund" ${(c.refundable_cop ?? 0) <= 0 ? 'disabled' : ''}>
+          ${(c.refundable_cop ?? 0) > 0 ? `Procesar devolución de ${cop(c.refundable_cop)}` : 'Sin saldo reembolsable'}
+        </button>
+      </div>
+
       <div class="section-title">Movimientos de saldo</div>
       <table>
         <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead>
@@ -631,6 +642,23 @@ function renderUserDetail(view) {
     ${body}`;
 
   document.getElementById('back').addEventListener('click', () => { state.userDetail = null; renderTab(); });
+  const refundBtn = document.getElementById('refund');
+  if (refundBtn && !refundBtn.disabled) refundBtn.addEventListener('click', () => refundUser(u));
+}
+
+function refundUser(u) {
+  const c = u.conductor || {};
+  if (!confirm(`Procesar devolución de ${cop(c.refundable_cop)} a ${u.name}?\n\n` +
+    `Primero haz la transferencia real; esto registra el débito en su saldo.`)) return;
+  const note = prompt('Referencia del pago (ej. "Nequi 300..." / "Transf. #123"):', '');
+  if (note === null) return;
+  api(`/admin/users/${u.id}/refund`, { method: 'POST', body: JSON.stringify({ note }) })
+    .then((r) => {
+      alert(`Devolución registrada: ${cop(r.refunded_cop)}. Saldo nuevo: ${cop(r.balance_cop)}.`);
+      return api(`/admin/users/${u.id}`);
+    })
+    .then((d) => { state.userDetail = d; renderTab(); })
+    .catch((err) => alert(err.message));
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
