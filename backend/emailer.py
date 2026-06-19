@@ -137,6 +137,18 @@ def verification_email(name: str, token: str) -> tuple[str, str, str]:
     return "Confirma tu correo · Faro Energy", html, text
 
 
+def reset_password_email(name: str, token: str) -> tuple[str, str, str]:
+    link = f"{PUBLIC_API_BASE}/auth/reset?token={token}"
+    html = _layout(
+        f"Restablece tu contraseña",
+        f"Hola {name}, recibimos una solicitud para cambiar tu contraseña en Faro Energy. "
+        "El enlace vence en 1 hora. Si no fuiste tú, ignora este correo.",
+        "Crear nueva contraseña", link,
+    )
+    text = f"Hola {name}, restablece tu contraseña en Faro Energy (vence en 1 hora): {link}"
+    return "Restablece tu contraseña · Faro Energy", html, text
+
+
 def receipt_email(name: str, location: str, kwh: float, total_cop: int, invoice_url: str = "") -> tuple[str, str, str]:
     body = (
         f"Gracias por cargar con Faro Energy. Aquí está tu recibo:<br><br>"

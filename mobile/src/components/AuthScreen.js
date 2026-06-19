@@ -50,6 +50,15 @@ export function AuthScreen({ onLogin }) {
     }
   };
 
+  const forgot = async () => {
+    setError(''); setInfo('');
+    if (!email) { setError('Escribe tu correo para enviarte el enlace'); return; }
+    try {
+      await apiFetch('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: email.trim().toLowerCase(), role }) });
+      setInfo('Si el correo existe, te enviamos un enlace para restablecer tu contraseña. Revisa tu bandeja (y spam).');
+    } catch (e) { setError(e.message); }
+  };
+
   const resend = async () => {
     setError(''); setInfo('');
     try {
@@ -153,6 +162,7 @@ export function AuthScreen({ onLogin }) {
           )}
 
           {error ? <Text style={styles.authError}>{error}</Text> : null}
+          {info ? <Text style={[styles.authError, { color: T.green }]}>{info}</Text> : null}
 
           <TouchableOpacity style={styles.authSubmit} onPress={submit} disabled={loading}>
             {loading
@@ -160,6 +170,12 @@ export function AuthScreen({ onLogin }) {
               : <Text style={styles.authSubmitText}>{mode === 'login' ? 'Ingresar' : 'Crear cuenta'}</Text>
             }
           </TouchableOpacity>
+
+          {mode === 'login' && (
+            <TouchableOpacity onPress={forgot} style={{ alignSelf: 'center', marginTop: 12 }}>
+              <Text style={{ color: T.green, fontSize: 13, fontWeight: '600' }}>¿Olvidaste tu contraseña?</Text>
+            </TouchableOpacity>
+          )}
 
           {mode === 'register' && (
             <Text style={[styles.seedText, { textAlign: 'center', marginTop: 12 }]}>

@@ -61,6 +61,9 @@ class User(Base):
     # Guardamos cuándo y qué versión aceptó (prueba del consentimiento).
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     terms_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Restablecer contraseña: token de un solo uso con expiración.
+    reset_token: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    reset_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

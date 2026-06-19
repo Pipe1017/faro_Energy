@@ -3,7 +3,7 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response, Form
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import emailer
@@ -133,6 +133,79 @@ async def resend_verification(body: ResendBody, db: AsyncSession = Depends(get_d
         asyncio.create_task(emailer.send_email(user.email, subject, html, text))
     await db.commit()
     return {"ok": True}
+
+
+# ── RESTABLECER CONTRASEÑA ────────────────────────────────────────────────────
+
+class ForgotBody(BaseModel):
+    email: str
+    role: str | None = None
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotBody, db: AsyncSession = Depends(get_db)):
+    """Público: envía un enlace para restablecer la contraseña. Devuelve ok SIEMPRE
+    (no revela si el correo existe). El enlace vence en 1 hora."""
+    email = body.email.lower().strip()
+    q = select(User).where(User.email == email)
+    if body.role:
+        q = q.where(User.role == body.role)
+    users = (await db.execute(q)).scalars().all()
+    for user in users:
+        user.reset_token = secrets.token_urlsafe(32)
+        user.reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        await db.flush()
+        subject, html, text = emailer.reset_password_email(user.name, user.reset_token)
+        asyncio.create_task(emailer.send_email(user.email, subject, html, text))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/auth/reset", response_class=HTMLResponse)
+async def reset_form(token: str, db: AsyncSession = Depends(get_db)):
+    """Página (abierta desde el correo) con el formulario de nueva contraseña."""
+    result = await db.execute(select(User).where(User.reset_token == token))
+    user = result.scalar_one_or_none()
+    if not user or not user.reset_expires or user.reset_expires < datetime.now(timezone.utc):
+        return HTMLResponse(_verify_page("Enlace inválido o vencido",
+                            "Solicita un nuevo enlace desde la app."), status_code=400)
+    return HTMLResponse(_reset_page(token))
+
+
+@router.post("/auth/reset-password", response_class=HTMLResponse)
+async def reset_password(token: str = Form(...), password: str = Form(...),
+                         db: AsyncSession = Depends(get_db)):
+    """Recibe la nueva contraseña del formulario y la guarda si el token es válido."""
+    if len(password) < 6:
+        return HTMLResponse(_reset_page(token, "La contraseña debe tener al menos 6 caracteres"), status_code=400)
+    result = await db.execute(select(User).where(User.reset_token == token))
+    user = result.scalar_one_or_none()
+    if not user or not user.reset_expires or user.reset_expires < datetime.now(timezone.utc):
+        return HTMLResponse(_verify_page("Enlace inválido o vencido",
+                            "Solicita un nuevo enlace desde la app."), status_code=400)
+    user.password_hash = hash_password(password)
+    user.reset_token = None
+    user.reset_expires = None
+    await db.commit()
+    return HTMLResponse(_verify_page("¡Contraseña actualizada!",
+                        "Ya puedes volver a la app e iniciar sesión con tu nueva contraseña."))
+
+
+def _reset_page(token: str, error: str = "") -> str:
+    err = f'<div style="color:#b91c1c;font-size:13px;margin-bottom:10px;">{error}</div>' if error else ""
+    return f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Nueva contraseña · Faro Energy</title></head>
+<body style="margin:0;background:#fdfbf7;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+display:grid;place-items:center;min-height:100vh;color:#2e2620;">
+<form method="post" action="/auth/reset-password" style="background:#fff;border:1px solid #ece5dc;border-radius:16px;padding:36px;max-width:380px;width:90%;text-align:center;">
+<div style="font-size:24px;font-weight:800;">Faro <span style="color:#b45309;">Energy</span></div>
+<div style="font-size:19px;font-weight:700;margin:18px 0 14px;">Crea tu nueva contraseña</div>
+{err}
+<input type="hidden" name="token" value="{token}">
+<input type="password" name="password" placeholder="Nueva contraseña (mín. 6)" required minlength="6"
+ style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #e7dfd0;border-radius:10px;font-size:15px;margin-bottom:14px;">
+<button type="submit" style="width:100%;padding:12px;border:none;border-radius:10px;background:#b45309;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Guardar contraseña</button>
+</form></body></html>"""
 
 
 def _verify_page(title: str, msg: str) -> str:
