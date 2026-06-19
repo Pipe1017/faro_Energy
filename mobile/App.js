@@ -1100,7 +1100,9 @@ export default function App() {
                             {ps === 'UNPAID' ? 'Sin cobrar' : `$ ${(s.total_charged || 0).toLocaleString('es-CO')}`}
                           </Text>
                           <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 1 }}>
-                            {new Date(s.ended_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                            {s.ended_at || s.started_at
+                              ? new Date(s.ended_at || s.started_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+                              : '—'}
                           </Text>
                         </View>
                         <Feather name="chevron-right" size={14} color={T.textMuted} />
@@ -1869,7 +1871,11 @@ export default function App() {
                   <View style={styles.sessionHistRow}>
                     <Text style={styles.sessionHistDetail}>{s.kwh_delivered} kWh</Text>
                     <Text style={styles.sessionHistDetail}>Luz: $ {s.electricity_cost.toLocaleString('es-CO')}</Text>
-                    <Text style={styles.sessionHistDetail}>{new Date(s.ended_at).toLocaleDateString('es-CO')}</Text>
+                    <Text style={styles.sessionHistDetail}>
+                      {s.ended_at || s.started_at
+                        ? new Date(s.ended_at || s.started_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+                        : '—'}
+                    </Text>
                   </View>
                 </View>
               ))}
