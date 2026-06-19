@@ -44,6 +44,10 @@ def monthly_fee_cop(n_chargers: int) -> int:
 # se crean ya verificados, así que esto solo afecta a registros nuevos sin confirmar.
 REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").lower() == "true"
 
+# Habeas Data: versión vigente de T&C + Política de Privacidad. Súbela cuando
+# cambien los documentos para volver a pedir aceptación.
+TERMS_VERSION = os.getenv("TERMS_VERSION", "2026-06-19")
+
 # ── Wallet / saldo prepago del conductor ──────────────────────────────────────
 WALLET_TOPUP_DEFAULT_COP = int(os.getenv("WALLET_TOPUP_DEFAULT_COP", "50000"))  # recarga sugerida
 WALLET_MIN_TOPUP_COP     = int(os.getenv("WALLET_MIN_TOPUP_COP", "5000"))       # recarga mínima

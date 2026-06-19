@@ -76,6 +76,8 @@ async def startup():
         ("ALTER TABLE disbursement_records ADD COLUMN note TEXT",                                     "note en disbursement_records"),
         ("ALTER TABLE users ADD COLUMN subscription_active BOOLEAN DEFAULT TRUE",                     "subscription_active en users"),
         ("ALTER TABLE users ADD COLUMN subscription_paid_until TIMESTAMP",                            "subscription_paid_until en users"),
+        ("ALTER TABLE users ADD COLUMN terms_accepted_at TIMESTAMP",                                  "terms_accepted_at en users"),
+        ("ALTER TABLE users ADD COLUMN terms_version TEXT",                                           "terms_version en users"),
     ]:
         try:
             async with engine.begin() as conn:

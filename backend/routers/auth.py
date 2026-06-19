@@ -35,6 +35,7 @@ class RegisterBody(BaseModel):
     name: str
     password: str
     role: str  # "conductor" | "owner"
+    accept_terms: bool = False   # Habeas Data: debe aceptar T&C + Privacidad
 
 
 class LoginBody(BaseModel):
@@ -76,6 +77,8 @@ def _check_login_rate(key: str):
 async def register(body: RegisterBody, db: AsyncSession = Depends(get_db)):
     if body.role not in ("conductor", "owner"):
         raise HTTPException(400, "role debe ser 'conductor' o 'owner'")
+    if not body.accept_terms:
+        raise HTTPException(400, "Debes aceptar los Términos y la Política de Privacidad")
     if len(body.password) < 6:
         raise HTTPException(400, "La contraseña debe tener al menos 6 caracteres")
     email = body.email.lower().strip()
@@ -89,7 +92,8 @@ async def register(body: RegisterBody, db: AsyncSession = Depends(get_db)):
     token = secrets.token_urlsafe(32)
     user = User(email=email, name=body.name,
                 password_hash=hash_password(body.password), role=body.role,
-                email_verified=False, email_verify_token=token)
+                email_verified=False, email_verify_token=token,
+                terms_accepted_at=datetime.now(timezone.utc), terms_version=TERMS_VERSION)
     db.add(user)
     await db.commit()
     # NO devolvemos token: el usuario debe CONFIRMAR su correo antes de poder entrar.

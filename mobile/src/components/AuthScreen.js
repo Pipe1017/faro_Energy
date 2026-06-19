@@ -17,11 +17,16 @@ export function AuthScreen({ onLogin }) {
   const [error, setError]     = useState('');
   const [info, setInfo]       = useState('');
   const [pending, setPending] = useState(null);  // {email, role} → esperando verificación
+  const [acceptTerms, setAcceptTerms] = useState(false);  // Habeas Data: aceptar T&C
 
   const submit = async () => {
     setError(''); setInfo('');
     if (!email || !password || (mode === 'register' && !name)) {
       setError('Completa todos los campos');
+      return;
+    }
+    if (mode === 'register' && !acceptTerms) {
+      setError('Debes aceptar los Términos y la Política de Privacidad');
       return;
     }
     setLoading(true);
@@ -32,7 +37,7 @@ export function AuthScreen({ onLogin }) {
         await SecureStore.setItemAsync('user', JSON.stringify(data.user));
         onLogin(data.token, data.user);
       } else {
-        const data = await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ email, name, password, role }) });
+        const data = await apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ email, name, password, role, accept_terms: acceptTerms }) });
         // El registro NO inicia sesión: hay que confirmar el correo primero.
         setPending({ email: data.email || email.trim().toLowerCase(), role: data.role || role });
       }
@@ -122,6 +127,30 @@ export function AuthScreen({ onLogin }) {
               <Text style={[styles.roleBtnText, role === 'owner' && styles.roleBtnTextActive]}>Dueño de cargador</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Habeas Data: aceptación de T&C + Privacidad (obligatorio para registrarse) */}
+          {mode === 'register' && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setAcceptTerms(v => !v)}
+              style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 4, marginBottom: 2 }}
+            >
+              <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, marginTop: 1,
+                borderColor: acceptTerms ? T.green : '#94866f',
+                backgroundColor: acceptTerms ? T.green : 'transparent',
+                alignItems: 'center', justifyContent: 'center' }}>
+                {acceptTerms && <Feather name="check" size={13} color="#fff" />}
+              </View>
+              <Text style={{ flex: 1, color: T.textSec, fontSize: 12.5, lineHeight: 18 }}>
+                Acepto los{' '}
+                <Text style={{ color: T.green, fontWeight: '700' }}
+                  onPress={() => Linking.openURL('https://faroenergy.lat/terminos.html')}>Términos</Text>
+                {' '}y la{' '}
+                <Text style={{ color: T.green, fontWeight: '700' }}
+                  onPress={() => Linking.openURL('https://faroenergy.lat/privacidad.html')}>Política de Privacidad</Text>.
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {error ? <Text style={styles.authError}>{error}</Text> : null}
 

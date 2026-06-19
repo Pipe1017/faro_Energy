@@ -57,6 +57,10 @@ class User(Base):
     # cargadores se ocultan/bloquean. paid_until = hasta cuándo está cubierta.
     subscription_active: Mapped[bool] = mapped_column(Boolean, default=True)
     subscription_paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Habeas Data (Ley 1581): consentimiento de T&C y Política de Privacidad.
+    # Guardamos cuándo y qué versión aceptó (prueba del consentimiento).
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_version: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
