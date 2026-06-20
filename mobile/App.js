@@ -365,11 +365,6 @@ export default function App() {
     if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); }
   }, [tab, token]);
 
-  // Rendimiento del dueño — recargar al cambiar el período
-  useEffect(() => {
-    if (!token || tab !== 'negocio') return;
-    apiFetch(`/my-stats?period=${statsPeriod}`, {}, token).then(setMyStats).catch(() => {});
-  }, [tab, token, statsPeriod]);
 
   // Mover mapa cuando cambia la búsqueda — DEBE estar antes de cualquier return condicional
   useEffect(() => {
@@ -1557,133 +1552,6 @@ export default function App() {
             <Text style={styles.btnText}>Agregar tarjeta</Text>
           </TouchableOpacity>
 
-          {/* P&L completo */}
-          {earnings ? (
-            <>
-              <View style={styles.earningsCard}>
-                <Text style={styles.earningsTitle}>Ganancia neta acumulada</Text>
-                <Text style={styles.earningsAmount}>
-                  $ {(earnings.total_net_profit_cop || 0).toLocaleString('es-CO')} COP
-                </Text>
-                <View style={styles.earningsRow}>
-                  <View style={styles.earningsStat}>
-                    <Text style={styles.earningsStatVal}>{earnings.total_sessions}</Text>
-                    <Text style={styles.earningsStatLbl}>Sesiones</Text>
-                  </View>
-                  <View style={styles.earningsStat}>
-                    <Text style={styles.earningsStatVal}>{earnings.total_kwh}</Text>
-                    <Text style={styles.earningsStatLbl}>kWh</Text>
-                  </View>
-                  <View style={styles.earningsStat}>
-                    <Text style={styles.earningsStatVal}>$ {(earnings.total_revenue_cop || 0).toLocaleString('es-CO')}</Text>
-                    <Text style={styles.earningsStatLbl}>Ingreso bruto</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Desglose */}
-              <View style={styles.plCard}>
-                <Text style={styles.sectionTitle}>Desglose P&L</Text>
-                <View style={styles.plRow}>
-                  <Text style={styles.plLabel}>Ingreso bruto conductores</Text>
-                  <Text style={styles.plPos}>+ $ {(earnings.total_revenue_cop || 0).toLocaleString('es-CO')}</Text>
-                </View>
-                <View style={styles.plRow}>
-                  <Text style={styles.plLabel}>Costo electricidad estimado</Text>
-                  <Text style={styles.plNeg}>− $ {(earnings.total_electricity_cop || 0).toLocaleString('es-CO')}</Text>
-                </View>
-                <View style={styles.plRow}>
-                  <Text style={styles.plLabel}>Comisión plataforma (10%)</Text>
-                  <Text style={styles.plNeg}>− $ {(earnings.total_commission_cop || 0).toLocaleString('es-CO')}</Text>
-                </View>
-                <View style={[styles.plRow, styles.plTotal]}>
-                  <Text style={styles.plTotalLabel}>Ganancia neta</Text>
-                  <Text style={styles.plTotalVal}>$ {(earnings.total_net_profit_cop || 0).toLocaleString('es-CO')}</Text>
-                </View>
-                <Text style={styles.plNote}>
-                  * Costo electricidad basado en tu tarifa registrada. Actualízala cuando llegue la factura.
-                </Text>
-              </View>
-            </>
-          ) : (
-            <ActivityIndicator color={T.green} style={{ marginTop: 32 }} />
-          )}
-
-          {/* Rendimiento por período */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-            <Text style={styles.sectionTitle}>Rendimiento</Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {[['today', 'Hoy'], ['week', '7 días'], ['month', '30 días']].map(([k, lbl]) => (
-                <TouchableOpacity key={k}
-                  style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: statsPeriod === k ? T.greenFaint : T.surface, borderWidth: 1, borderColor: statsPeriod === k ? T.greenDark : T.cardBorder }}
-                  onPress={() => setStatsPeriod(k)}>
-                  <Text style={{ color: statsPeriod === k ? T.green : T.textMuted, fontSize: 11, fontWeight: '700' }}>{lbl}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          {myStats ? (
-            <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                {[[myStats.totals.sessions, 'Sesiones'], [myStats.totals.kwh, 'kWh'], [`$ ${(myStats.totals.net_cop || 0).toLocaleString('es-CO')}`, 'Neto']].map(([val, lbl]) => (
-                  <View key={lbl} style={{ flex: 1, backgroundColor: T.card, borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: T.cardBorder }}>
-                    <Text style={{ color: T.textPri, fontSize: 15, fontWeight: '800' }}>{val}</Text>
-                    <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 2 }}>{lbl}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Gráfica de barras: ganancia por día (últimos 7 días) */}
-              {myStats.last_7_days?.length > 0 && (() => {
-                const days   = myStats.last_7_days;
-                const maxNet = Math.max(...days.map(d => d.net_cop), 1);
-                const weekTotal = days.reduce((a, d) => a + d.net_cop, 0);
-                const DOW = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-                return (
-                  <View style={{ backgroundColor: T.card, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: T.cardBorder }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-                      <Text style={{ color: T.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>GANANCIA · 7 DÍAS</Text>
-                      <Text style={{ color: T.green, fontSize: 14, fontWeight: '800' }}>$ {weekTotal.toLocaleString('es-CO')}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 80 }}>
-                      {days.map((d, i) => {
-                        const h        = Math.max(3, Math.round((d.net_cop / maxNet) * 64));
-                        const isToday  = i === days.length - 1;
-                        const dt       = new Date(d.date + 'T12:00:00');
-                        return (
-                          <View key={d.date} style={{ flex: 1, alignItems: 'center' }}>
-                            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-                              <View style={{ width: 16, height: h, borderRadius: 4, backgroundColor: isToday ? T.green : T.greenLight }} />
-                            </View>
-                            <Text style={{ color: isToday ? T.green : T.textMuted, fontSize: 10, marginTop: 6, fontWeight: isToday ? '800' : '500' }}>
-                              {DOW[dt.getDay()]}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  </View>
-                );
-              })()}
-
-              {myStats.chargers.map(st => (
-                <View key={st.charger_id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: T.surface, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: T.cardBorder }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: T.textPri, fontSize: 13, fontWeight: '700' }}>{st.charger_id}</Text>
-                    <Text style={{ color: T.textMuted, fontSize: 11 }} numberOfLines={1}>{st.location}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ color: T.green, fontSize: 13, fontWeight: '700' }}>$ {(st.net_cop || 0).toLocaleString('es-CO')}</Text>
-                    <Text style={{ color: T.textMuted, fontSize: 11 }}>
-                      {st.sessions} ses · {st.kwh} kWh · {st.utilization_pct}% uso
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </>
-          ) : (
-            <ActivityIndicator color={T.green} style={{ marginVertical: 12 }} />
-          )}
 
 
           {/* Config de cargadores ahora vive en su propia pestaña */}
@@ -1695,10 +1563,13 @@ export default function App() {
           {/* Saldo disponible y retiro */}
           {balance && (
             <View style={[styles.card, { borderColor: T.greenDark, borderWidth: 1.5, marginBottom: 16 }]}>
-              <Text style={{ color: T.textMuted, fontSize: 12, fontWeight: '600', letterSpacing: 0.5 }}>TU SALDO</Text>
+              <Text style={{ color: T.textMuted, fontSize: 12, fontWeight: '600', letterSpacing: 0.5 }}>TU SALDO POR COBRAR</Text>
               <Text style={{ color: T.green, fontSize: 32, fontWeight: '800', marginTop: 4 }}>
                 $ {balance.balance_cop.toLocaleString('es-CO')}
                 <Text style={{ fontSize: 15, fontWeight: '600', color: T.textSec }}>  COP</Text>
+              </Text>
+              <Text style={{ color: T.textMuted, fontSize: 11, marginTop: 4 }}>
+                Tu ganancia de cada carga (ya con la comisión descontada) se suma aquí y baja cuando te pagamos.
               </Text>
               <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
                 {balance.in_transit_cop > 0 && (
@@ -1831,11 +1702,13 @@ export default function App() {
                 const when = s.ended_at || s.started_at
                   ? new Date(s.ended_at || s.started_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
                   : '—';
+                // Lo que entra a TU SALDO en esta sesión = recarga − comisión − IVA comisión
+                const recibe = Math.round((s.total_charged || 0) - (s.commission_cpo || 0) * 1.19);
                 return (
                   <View key={s.id} style={styles.sessionHistCard}>
                     <View style={styles.sessionHistHeader}>
                       <Text style={styles.sessionHistId}>{s.charger_id}</Text>
-                      <Text style={styles.sessionHistRevenue}>+ $ {s.net_profit_owner.toLocaleString('es-CO')}</Text>
+                      <Text style={styles.sessionHistRevenue}>+ $ {recibe.toLocaleString('es-CO')}</Text>
                     </View>
                     <Text style={styles.sessionHistLocation}>{s.location}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
@@ -1845,7 +1718,7 @@ export default function App() {
                     </View>
                     <View style={styles.sessionHistRow}>
                       <Text style={styles.sessionHistDetail}>{s.kwh_delivered} kWh</Text>
-                      <Text style={styles.sessionHistDetail}>Luz: $ {s.electricity_cost.toLocaleString('es-CO')}</Text>
+                      <Text style={styles.sessionHistDetail}>a tu saldo · luz $ {s.electricity_cost.toLocaleString('es-CO')}</Text>
                     </View>
                   </View>
                 );
