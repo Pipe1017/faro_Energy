@@ -24,22 +24,12 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
   const isCharg = charger.status === 'Charging';
   const isDown  = charger.status === 'Offline' || charger.status === 'Unavailable' || charger.status === 'Faulted';
 
-  // Los cargadores Faro son POCOS → mantenemos tracksViewChanges=true para que el
-  // pin nunca se "congele" ni desaparezca cuando entran los pines de la API.
-  // Lejos → bolita de color (limpio, sin saturar el mapa)
-  if (zoom === 'far' && !isSelected) {
-    return (
-      <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-        onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 0.5 }}>
-        <View style={[styles.mapPin, { borderColor: isMine ? T.green : color }]}>
-          <View style={[styles.mapPinDot, { backgroundColor: color }]} />
-        </View>
-      </Marker>
-    );
-  }
-
-  const d        = isSelected ? 42 : 34;          // diámetro del faro
-  const showInfo = zoom === 'close' || isSelected;
+  // Los cargadores Faro son POCOS → tracksViewChanges=true para que el pin nunca se
+  // "congele" ni desaparezca cuando entran los de la API.
+  // UN SOLO símbolo (el faro) en todos los zooms: pequeño de lejos, grande de cerca.
+  const d        = isSelected ? 44 : zoom === 'far' ? 22 : zoom === 'close' ? 36 : 30;
+  const showInfo = zoom === 'close' || isSelected;   // burbuja de precio
+  const showBadge = zoom !== 'far';                  // badges solo de cerca (limpio de lejos)
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
@@ -66,14 +56,14 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
           <Faro size={d * 0.56} color="#faf7f1" />
 
           {/* Badge: cargando (rayo índigo) */}
-          {isCharg && (
+          {showBadge && isCharg && (
             <View style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: 8,
               backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.charging }}>
               <Feather name="zap" size={9} color={T.charging} />
             </View>
           )}
           {/* Badge: es MÍO (dueño) */}
-          {isMine && !isCharg && (
+          {showBadge && isMine && !isCharg && (
             <View style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: 8,
               backgroundColor: '#faf7f1', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.green }}>
               <Feather name="home" size={8} color={T.green} />
