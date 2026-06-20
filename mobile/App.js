@@ -359,6 +359,7 @@ export default function App() {
       apiFetch('/brand-profiles', {}, token).then(d => setBrandProfiles(d.profiles || [])).catch(() => {});
       apiFetch('/my-events', {}, token).then(setOwnerEvents).catch(() => {});
       apiFetch('/my-subscription', {}, token).then(setMySubscription).catch(() => {});
+      apiFetch('/my-stats?period=week', {}, token).then(setMyStats).catch(() => {});  // solo para la gráfica de 7 días
     }
     if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
     if (tab === 'admin')   { apiFetch('/admin/summary', {}, token).then(setAdminSummary).catch(() => {}); }
@@ -1553,6 +1554,39 @@ export default function App() {
           </TouchableOpacity>
 
 
+
+          {/* Gráfica: lo que entró a tu saldo por día (últimos 7 días) */}
+          {myStats?.last_7_days?.length > 0 && (() => {
+            const days   = myStats.last_7_days;
+            const maxNet = Math.max(...days.map(d => d.net_cop), 1);
+            const weekTotal = days.reduce((a, d) => a + d.net_cop, 0);
+            const DOW = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+            return (
+              <View style={{ backgroundColor: T.card, borderRadius: 12, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: T.cardBorder }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+                  <Text style={{ color: T.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>A TU SALDO · 7 DÍAS</Text>
+                  <Text style={{ color: T.green, fontSize: 14, fontWeight: '800' }}>$ {weekTotal.toLocaleString('es-CO')}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 80 }}>
+                  {days.map((d, i) => {
+                    const h        = Math.max(3, Math.round((d.net_cop / maxNet) * 64));
+                    const isToday  = i === days.length - 1;
+                    const dt       = new Date(d.date + 'T12:00:00');
+                    return (
+                      <View key={d.date} style={{ flex: 1, alignItems: 'center' }}>
+                        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                          <View style={{ width: 16, height: h, borderRadius: 4, backgroundColor: isToday ? T.green : T.greenLight }} />
+                        </View>
+                        <Text style={{ color: isToday ? T.green : T.textMuted, fontSize: 10, marginTop: 6, fontWeight: isToday ? '800' : '500' }}>
+                          {DOW[dt.getDay()]}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })()}
 
           {/* Config de cargadores ahora vive en su propia pestaña */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.surface, borderRadius: 10, padding: 10, marginBottom: 14, borderWidth: 1, borderColor: T.cardBorder }}>
