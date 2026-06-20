@@ -1,21 +1,11 @@
 import React, { memo, useState, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
-import { Feather } from '@expo/vector-icons';
-import Svg, { Path, Rect } from 'react-native-svg';
 import { T, STATUS_COLOR } from '../theme';
 
-// Faro (linterna) en un solo color — el símbolo de marca, como pin del mapa.
-function Faro({ size = 18, color = '#fff' }) {
-  return (
-    <Svg width={size * 48 / 78} height={size} viewBox="36 28 48 78">
-      <Path d="M50 44 L60 34 L70 44 Z" fill={color} />
-      <Rect x="52" y="44" width="16" height="14" rx="3" fill={color} />
-      <Path d="M53 58 L67 58 L72 98 L48 98 Z" fill={color} />
-      <Rect x="42" y="98" width="36" height="5" rx="2.5" fill={color} />
-    </Svg>
-  );
-}
+// NOTA DE ESTABILIDAD: los marcadores de react-native-maps deben ser SOLO View+Text.
+// Meter react-native-svg o íconos de fuente dentro de un <Marker> hace que en Android
+// los pines DESAPAREZCAN al hacer zoom/redibujar el mapa. Por eso aquí no hay SVG.
 
 export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => {
   const color   = STATUS_COLOR[charger.status] || T.offline;
@@ -25,9 +15,8 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   const specs   = [charger.power_kw ? `${charger.power_kw} kW` : null, charger.connector_type]
                     .filter(Boolean).join(' · ');
 
-  // Estabilidad react-native-maps: re-captura el pin SOLO un instante cuando cambia
-  // algo real (estado/precio/selección), luego lo congela. NO depende del zoom →
-  // mover el mapa ya no re-dibuja los pines (esa era la causa del parpadeo).
+  // Re-captura el snapshot un instante al cambiar algo real, luego lo congela.
+  // El render NO depende del zoom → mover/zoom no re-dibuja el pin.
   const [tracks, setTracks] = useState(true);
   useEffect(() => {
     setTracks(true);
@@ -35,7 +24,7 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
     return () => clearTimeout(t);
   }, [charger.status, charger.price_per_kwh, charger.price_per_kwh_now, isSelected, isMine, specs]);
 
-  const d = isSelected ? 42 : 34;   // tamaño FIJO (no depende del zoom)
+  const d = isSelected ? 30 : 24;
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
@@ -49,40 +38,28 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
             {price > 0 && !isDown && (
               <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 11 }}>${price.toLocaleString('es-CO')}/kWh</Text>
             )}
-            {specs ? <Text style={{ color: '#6b5d4a', fontWeight: '600', fontSize: 9.5 }}>{specs}</Text> : null}
+            {!!specs && <Text style={{ color: '#6b5d4a', fontWeight: '600', fontSize: 9.5 }}>{specs}</Text>}
           </View>
         )}
 
-        {/* El faro */}
+        {/* Pin: círculo de color (estado) con centro claro. Sin SVG/íconos. */}
         <View style={{
           width: d, height: d, borderRadius: d / 2, backgroundColor: color,
           alignItems: 'center', justifyContent: 'center',
-          opacity: isDown ? 0.55 : 1,
-          borderWidth: isMine ? 3 : 1.5, borderColor: isMine ? '#faf7f1' : 'rgba(255,255,255,0.55)',
+          opacity: isDown ? 0.5 : 1,
+          borderWidth: isMine ? 3 : 2, borderColor: isMine ? '#faf7f1' : 'rgba(255,255,255,0.7)',
           shadowColor: '#2b2520', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4,
-          transform: [{ scale: isSelected ? 1.05 : 1 }],
         }}>
-          <Faro size={d * 0.56} color="#faf7f1" />
-
-          {isCharg && (
-            <View style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: 8,
-              backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.charging }}>
-              <Feather name="zap" size={9} color={T.charging} />
-            </View>
-          )}
-          {isMine && !isCharg && (
-            <View style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: 8,
-              backgroundColor: '#faf7f1', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.green }}>
-              <Feather name="home" size={8} color={T.green} />
-            </View>
-          )}
+          {/* centro: marfil si está cargando (resalta), si no un punto pequeño */}
+          <View style={{ width: isCharg ? d * 0.5 : d * 0.32, height: isCharg ? d * 0.5 : d * 0.32,
+            borderRadius: d, backgroundColor: isCharg ? '#faf7f1' : 'rgba(255,255,255,0.85)' }} />
         </View>
 
-        {/* Punta que apunta a la ubicación */}
+        {/* Punta hacia la ubicación */}
         <View style={{ width: 0, height: 0, marginTop: -1,
           borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 7,
           borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: color,
-          opacity: isDown ? 0.55 : 1 }} />
+          opacity: isDown ? 0.5 : 1 }} />
       </View>
     </Marker>
   );
@@ -96,14 +73,12 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   prev.isMine === next.isMine
 );
 
-// Pin de cargador externo (Open Charge Map) — estático, NO es un faro: punto
-// punteado con enchufe. Sin effects ni dependencia de zoom → no parpadea.
+// Cargador externo (Open Charge Map) — punto hueco gris, claramente distinto.
+// Solo View, sin íconos → estable.
 export const ExternalMarker = memo(({ charger, onPress }) => (
   <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
     onPress={onPress} tracksViewChanges={false} anchor={{ x: 0.5, y: 0.5 }} opacity={0.9}>
-    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff',
-      alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: T.textMuted, borderStyle: 'dashed' }}>
-      <Feather name="zap" size={11} color={T.textMuted} />
-    </View>
+    <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#faf7f1',
+      borderWidth: 2, borderColor: T.textMuted }} />
   </Marker>
 ), (prev, next) => prev.charger.id === next.charger.id);
