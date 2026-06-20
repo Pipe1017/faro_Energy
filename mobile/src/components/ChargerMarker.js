@@ -2,11 +2,10 @@ import React, { memo, useState, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Feather } from '@expo/vector-icons';
-import Svg, { Path, Rect, Circle } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { T, STATUS_COLOR } from '../theme';
-import { styles } from '../styles';
 
-// Faro (linterna) en un solo color — el símbolo de marca, ahora como pin del mapa.
+// Faro (linterna) en un solo color — el símbolo de marca, como pin del mapa.
 function Faro({ size = 18, color = '#fff' }) {
   return (
     <Svg width={size * 48 / 78} height={size} viewBox="36 28 48 78">
@@ -18,29 +17,39 @@ function Faro({ size = 18, color = '#fff' }) {
   );
 }
 
-export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
+export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => {
   const color   = STATUS_COLOR[charger.status] || T.offline;
   const price   = Math.round((charger.price_per_kwh_now ?? charger.price_per_kwh ?? 0) * 1.19);
   const isCharg = charger.status === 'Charging';
   const isDown  = charger.status === 'Offline' || charger.status === 'Unavailable' || charger.status === 'Faulted';
+  const specs   = [charger.power_kw ? `${charger.power_kw} kW` : null, charger.connector_type]
+                    .filter(Boolean).join(' · ');
 
-  // Los cargadores Faro son POCOS → tracksViewChanges=true para que el pin nunca se
-  // "congele" ni desaparezca cuando entran los de la API.
-  // UN SOLO símbolo (el faro) en todos los zooms: pequeño de lejos, grande de cerca.
-  const d        = isSelected ? 44 : zoom === 'far' ? 22 : zoom === 'close' ? 36 : 30;
-  const showInfo = zoom === 'close' || isSelected;   // burbuja de precio
-  const showBadge = zoom !== 'far';                  // badges solo de cerca (limpio de lejos)
+  // Estabilidad react-native-maps: re-captura el pin SOLO un instante cuando cambia
+  // algo real (estado/precio/selección), luego lo congela. NO depende del zoom →
+  // mover el mapa ya no re-dibuja los pines (esa era la causa del parpadeo).
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => {
+    setTracks(true);
+    const t = setTimeout(() => setTracks(false), 600);
+    return () => clearTimeout(t);
+  }, [charger.status, charger.price_per_kwh, charger.price_per_kwh_now, isSelected, isMine, specs]);
+
+  const d = isSelected ? 42 : 34;   // tamaño FIJO (no depende del zoom)
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 1.0 }}>
+      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 1.0 }}>
       <View style={{ alignItems: 'center' }}>
-        {/* Burbuja de precio (cargadores disponibles) */}
-        {showInfo && price > 0 && !isDown && (
-          <View style={{ backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 7, paddingVertical: 2,
-            marginBottom: 3, borderWidth: 1, borderColor: color,
+        {/* Burbuja: precio + potencia + enchufe */}
+        {(price > 0 || specs) && (
+          <View style={{ backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 7, paddingVertical: 3,
+            marginBottom: 3, borderWidth: 1, borderColor: color, alignItems: 'center',
             shadowColor: '#2b2520', shadowOpacity: 0.18, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 3 }}>
-            <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 11 }}>${price.toLocaleString('es-CO')}</Text>
+            {price > 0 && !isDown && (
+              <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 11 }}>${price.toLocaleString('es-CO')}/kWh</Text>
+            )}
+            {specs ? <Text style={{ color: '#6b5d4a', fontWeight: '600', fontSize: 9.5 }}>{specs}</Text> : null}
           </View>
         )}
 
@@ -55,15 +64,13 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
         }}>
           <Faro size={d * 0.56} color="#faf7f1" />
 
-          {/* Badge: cargando (rayo índigo) */}
-          {showBadge && isCharg && (
+          {isCharg && (
             <View style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: 8,
               backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.charging }}>
               <Feather name="zap" size={9} color={T.charging} />
             </View>
           )}
-          {/* Badge: es MÍO (dueño) */}
-          {showBadge && isMine && !isCharg && (
+          {isMine && !isCharg && (
             <View style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: 8,
               backgroundColor: '#faf7f1', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.green }}>
               <Feather name="home" size={8} color={T.green} />
@@ -83,30 +90,20 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
   prev.charger.status === next.charger.status &&
   prev.charger.price_per_kwh === next.charger.price_per_kwh &&
   prev.charger.price_per_kwh_now === next.charger.price_per_kwh_now &&
+  prev.charger.power_kw === next.charger.power_kw &&
+  prev.charger.connector_type === next.charger.connector_type &&
   prev.isSelected === next.isSelected &&
-  prev.isMine === next.isMine &&
-  prev.zoom === next.zoom
+  prev.isMine === next.isMine
 );
 
-// Pin de cargador externo (Open Charge Map) — claramente NO es un faro: punto
-// tenue con enchufe, para que se distinga de los cargadores Faro.
-export const ExternalMarker = memo(({ charger, onPress, zoom }) => {
-  const [tracks, setTracks] = useState(true);
-  useEffect(() => {
-    setTracks(true);
-    const t = setTimeout(() => setTracks(false), 700);
-    return () => clearTimeout(t);
-  }, [zoom]);
-  return (
-    <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 0.5 }} opacity={0.92}>
-      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff',
-        alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: T.textMuted, borderStyle: 'dashed' }}>
-        <Feather name="zap" size={11} color={T.textMuted} />
-      </View>
-    </Marker>
-  );
-}, (prev, next) => prev.charger.id === next.charger.id && prev.zoom === next.zoom);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Auth helpers
+// Pin de cargador externo (Open Charge Map) — estático, NO es un faro: punto
+// punteado con enchufe. Sin effects ni dependencia de zoom → no parpadea.
+export const ExternalMarker = memo(({ charger, onPress }) => (
+  <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
+    onPress={onPress} tracksViewChanges={false} anchor={{ x: 0.5, y: 0.5 }} opacity={0.9}>
+    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff',
+      alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: T.textMuted, borderStyle: 'dashed' }}>
+      <Feather name="zap" size={11} color={T.textMuted} />
+    </View>
+  </Marker>
+), (prev, next) => prev.charger.id === next.charger.id);
