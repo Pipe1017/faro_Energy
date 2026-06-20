@@ -4,6 +4,13 @@ from zoneinfo import ZoneInfo
 
 PLATFORM_MARGIN = 0.15   # 15% comisión Faro (modelo nuevo)
 IVA_RATE        = 0.19   # IVA Colombia
+
+# Open Charge Map: cargadores públicos a nivel nacional que AÚN NO son Faro
+# (se muestran como "próximamente" en el mapa). API key gratis en openchargemap.org.
+OCM_API_KEY     = os.getenv("OCM_API_KEY", "")
+OCM_COUNTRY     = os.getenv("OCM_COUNTRY", "CO")
+OCM_MAX_RESULTS = int(os.getenv("OCM_MAX_RESULTS", "500"))
+OCM_CACHE_HOURS = int(os.getenv("OCM_CACHE_HOURS", "24"))
 GATEWAY_FEE     = 0.03   # (legado; en wallet la pasarela va en la recarga, no por sesión)
 
 # Tarifa real de Wompi por transacción (la asume FARO en cada recarga del wallet).
