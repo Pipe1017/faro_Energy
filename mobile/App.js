@@ -17,7 +17,7 @@ import { MEDELLIN, formatElapsed } from './src/constants';
 import { KbSheet } from './src/hooks';
 import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
 import { FaroLogo } from './src/components/FaroLogo';
-import { ChargerMarker } from './src/components/ChargerMarker';
+import { ChargerMarker, ExternalMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
 import { styles } from './src/styles';
 
@@ -1800,11 +1800,7 @@ export default function App() {
           >
             {/* Cargadores públicos que AÚN NO son Faro (Open Charge Map) */}
             {zoom !== 'far' && externalChargers.map(e => (
-              <Marker key={e.id} coordinate={{ latitude: e.lat, longitude: e.lng }}
-                onPress={() => setExternalPick(e)} tracksViewChanges={false} anchor={{ x: 0.5, y: 0.5 }}>
-                <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#ffffff',
-                  borderWidth: 2, borderColor: T.textMuted, opacity: 0.9 }} />
-              </Marker>
+              <ExternalMarker key={e.id} charger={e} zoom={zoom} onPress={() => setExternalPick(e)} />
             ))}
             {chargers.filter(c => c.lat && c.lng).map(c => (
               <ChargerMarker
