@@ -24,20 +24,13 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
   const isCharg = charger.status === 'Charging';
   const isDown  = charger.status === 'Offline' || charger.status === 'Unavailable' || charger.status === 'Faulted';
 
-  // Fix react-native-maps: re-captura el snapshot un instante cuando cambia algo,
-  // luego lo congela. Evita que los pines "desaparezcan" al re-renderizar el mapa.
-  const [tracks, setTracks] = useState(true);
-  useEffect(() => {
-    setTracks(true);
-    const t = setTimeout(() => setTracks(false), 700);
-    return () => clearTimeout(t);
-  }, [charger.status, charger.price_per_kwh, charger.price_per_kwh_now, isSelected, isMine, zoom]);
-
+  // Los cargadores Faro son POCOS → mantenemos tracksViewChanges=true para que el
+  // pin nunca se "congele" ni desaparezca cuando entran los pines de la API.
   // Lejos → bolita de color (limpio, sin saturar el mapa)
   if (zoom === 'far' && !isSelected) {
     return (
       <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-        onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 0.5 }}>
+        onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 0.5 }}>
         <View style={[styles.mapPin, { borderColor: isMine ? T.green : color }]}>
           <View style={[styles.mapPinDot, { backgroundColor: color }]} />
         </View>
@@ -50,7 +43,7 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 1.0 }}>
+      onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 1.0 }}>
       <View style={{ alignItems: 'center' }}>
         {/* Burbuja de precio (cargadores disponibles) */}
         {showInfo && price > 0 && !isDown && (
