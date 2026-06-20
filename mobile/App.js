@@ -60,7 +60,8 @@ export default function App() {
   const [adminSummary, setAdminSummary]   = useState(null);
   const [sessionDetail, setSessionDetail] = useState(null); // sesión seleccionada para ver detalle
   const [ratePrompt, setRatePrompt]       = useState(null); // {sessionId, kwh, cost} → calificar al terminar la carga
-  const [sessionsShown, setSessionsShown] = useState(5);    // paginación local
+  const [sessionsShown, setSessionsShown] = useState(5);    // paginación local (conductor)
+  const [ownerSessionsShown, setOwnerSessionsShown] = useState(6);  // paginación (dueño)
   const [myDisburses, setMyDisburses]     = useState(null);
   const [addChargerModal, setAddChargerModal] = useState(false);
   const [chargerForm, setChargerForm]     = useState({
@@ -948,7 +949,7 @@ export default function App() {
           </View>
         )}
 
-        {/* Editor de precio */}
+        {/* Precio al conductor */}
         {isEditing ? (
           <View style={styles.priceEditor}>
             <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
@@ -964,12 +965,99 @@ export default function App() {
         ) : (
           <TouchableOpacity style={styles.priceRow} onPress={() => { setEditingPrice(item.id); setNewPrice(String(item.price_per_kwh || '')); }}>
             <View>
+              <Text style={styles.priceLabel}>Precio al conductor</Text>
               <Text style={styles.priceValue}>$ {(item.price_per_kwh || 0).toLocaleString('es-CO')} / kWh</Text>
-              <Text style={styles.priceUserNote}>Conductor paga: $ {Math.round((item.price_per_kwh || 0) * 1.1).toLocaleString('es-CO')} / kWh (+10% CPO)</Text>
+              <Text style={styles.priceUserNote}>Conductor paga: $ {Math.round((item.price_per_kwh || 0) * 1.19).toLocaleString('es-CO')} / kWh (IVA incl.)</Text>
             </View>
-            <Text style={styles.priceEdit}>Editar</Text>
+            <Feather name="edit-2" size={14} color={T.green} />
           </TouchableOpacity>
         )}
+
+        {/* Tarifa pico (6–10 pm) */}
+        {editingPrice === `peak_${item.id}` ? (
+          <View style={styles.priceEditor}>
+            <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
+              keyboardType="numeric" placeholder="Vacío = quitar" placeholderTextColor={T.textMuted} autoFocus />
+            <Text style={styles.priceUnit}>COP/kWh</Text>
+            <TouchableOpacity style={styles.priceSave} onPress={async () => {
+              const peak = parseFloat(newPrice);
+              try {
+                await apiFetch(`/chargers/${item.id}/peak-price`, { method: 'PATCH',
+                  body: JSON.stringify({ peak_price_per_kwh: peak > 0 ? peak : null }) }, token);
+                setEditingPrice(null); fetchStatus();
+              } catch (e) { Alert.alert('Error', e.message); }
+            }}>
+              <Feather name="check" size={18} color="#fdfbf7" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
+              <Feather name="x" size={18} color={T.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={[styles.priceRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }]}
+            onPress={() => { setEditingPrice(`peak_${item.id}`); setNewPrice(String(item.peak_price_per_kwh || '')); }}>
+            <View>
+              <Text style={styles.priceLabel}>Tarifa pico (6–10 pm)</Text>
+              <Text style={[styles.priceValue, !item.peak_price_per_kwh && { color: T.textMuted, fontSize: 13 }]}>
+                {item.peak_price_per_kwh ? `$ ${item.peak_price_per_kwh.toLocaleString('es-CO')} / kWh` : 'Sin tarifa pico'}
+              </Text>
+            </View>
+            <Feather name="edit-2" size={14} color={item.peak_price_per_kwh ? T.green : T.textMuted} />
+          </TouchableOpacity>
+        )}
+
+        {/* Costo electricidad */}
+        {editingPrice === `cost_${item.id}` ? (
+          <View style={styles.priceEditor}>
+            <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
+              keyboardType="numeric" placeholder="Ej: 650" placeholderTextColor={T.textMuted} autoFocus />
+            <Text style={styles.priceUnit}>COP/kWh</Text>
+            <TouchableOpacity style={styles.priceSave} onPress={async () => {
+              const cost = parseFloat(newPrice);
+              if (!cost || cost <= 0) return;
+              await apiFetch(`/chargers/${item.id}/cost`, { method: 'PATCH', body: JSON.stringify({ cost_per_kwh: cost }) }, token);
+              setEditingPrice(null); fetchStatus(); fetchEarnings();
+            }}>
+              <Feather name="check" size={18} color="#fdfbf7" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
+              <Feather name="x" size={18} color={T.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={[styles.priceRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }]}
+            onPress={() => { setEditingPrice(`cost_${item.id}`); setNewPrice(String(item.cost_per_kwh || '')); }}>
+            <View>
+              <Text style={styles.priceLabel}>Mi costo de electricidad</Text>
+              <Text style={[styles.priceValue, { fontSize: 13 }]}>$ {(item.cost_per_kwh || 0).toLocaleString('es-CO')} / kWh</Text>
+            </View>
+            <Feather name="edit-2" size={14} color={T.textMuted} />
+          </TouchableOpacity>
+        )}
+
+        {/* Acciones */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, borderTopWidth: 1, borderTopColor: T.cardBorder, paddingTop: 10, flexWrap: 'wrap' }}>
+          {item.status !== 'Offline' && item.status !== 'Charging' && (
+            <TouchableOpacity
+              style={[styles.btn, { flex: 1, minWidth: 90, marginTop: 0, paddingVertical: 9,
+                backgroundColor: item.status === 'Unavailable' ? T.greenFaint : T.surface,
+                borderWidth: 1, borderColor: item.status === 'Unavailable' ? T.greenDark : T.cardBorder }]}
+              onPress={() => togglePause(item)}>
+              <Feather name={item.status === 'Unavailable' ? 'play' : 'pause'} size={13}
+                color={item.status === 'Unavailable' ? T.green : T.textMuted} />
+              <Text style={[styles.btnText, { fontSize: 12, color: item.status === 'Unavailable' ? T.green : T.textMuted }]}>
+                {item.status === 'Unavailable' ? 'Reanudar' : 'Pausar'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.btn, { flex: 1, minWidth: 90, marginTop: 0, paddingVertical: 9,
+              backgroundColor: '#fbe7e7', borderWidth: 1, borderColor: '#b91c1c' }]}
+            onPress={() => deleteCharger(item)}>
+            <Feather name="trash-2" size={13} color={T.dangerText} />
+            <Text style={[styles.btnText, { fontSize: 12, color: T.dangerText }]}>Eliminar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -1218,6 +1306,17 @@ export default function App() {
           renderItem={isOwner ? renderOwnerCard : renderDriverCard}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchStatus(true)} tintColor={T.green} />}
+          ListHeaderComponent={isOwner ? (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={styles.sectionTitle}>Mis cargadores</Text>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.greenFaint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: T.greenDark }}
+                onPress={() => setAddChargerModal(true)}>
+                <Feather name="plus" size={13} color={T.green} />
+                <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Agregar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name={serverOk === false ? 'wifi-off' : 'zap-off'} size={40} color={T.textMuted} />
@@ -1586,180 +1685,12 @@ export default function App() {
             <ActivityIndicator color={T.green} style={{ marginVertical: 12 }} />
           )}
 
-          {/* Mis cargadores con precio Y costo editable */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 6 }}>
-            <Text style={styles.sectionTitle}>Mis cargadores</Text>
-            <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.greenFaint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: T.greenDark }}
-              onPress={() => setAddChargerModal(true)}>
-              <Feather name="plus" size={13} color={T.green} />
-              <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Agregar</Text>
-            </TouchableOpacity>
+
+          {/* Config de cargadores ahora vive en su propia pestaña */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.surface, borderRadius: 10, padding: 10, marginBottom: 14, borderWidth: 1, borderColor: T.cardBorder }}>
+            <Feather name="zap" size={14} color={T.green} />
+            <Text style={{ color: T.textSec, fontSize: 12, flex: 1 }}>Configura precios y agrega cargadores en la pestaña <Text style={{ fontWeight: '700', color: T.textPri }}>Mis cargadores</Text>.</Text>
           </View>
-          {chargers.filter(c => c.owner_id === user?.id).map(c => (
-            <View key={c.id} style={[styles.card, styles.cardMine]}>
-              <View style={styles.cardHeader}>
-                <View style={[styles.dot, { backgroundColor: STATUS_COLOR[c.status] || T.offline }]} />
-                <Text style={styles.chargerId}>{c.id}</Text>
-                <Text style={[styles.statusText, { color: STATUS_COLOR[c.status] || T.offline, fontSize: 12 }]}>{c.status}</Text>
-              </View>
-              <Text style={styles.location}>{c.location}</Text>
-
-              {/* Specs técnicas */}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                {c.power_kw && (
-                  <View style={styles.techChip}>
-                    <Feather name="zap" size={11} color={T.green} />
-                    <Text style={styles.techChipText}>{c.power_kw} kW</Text>
-                  </View>
-                )}
-                {c.connector_type && (
-                  <View style={styles.techChip}>
-                    <Feather name="cpu" size={11} color={T.textSec} />
-                    <Text style={styles.techChipText}>{c.connector_type}</Text>
-                  </View>
-                )}
-                {c.model && (
-                  <View style={styles.techChip}>
-                    <Feather name="box" size={11} color={T.textMuted} />
-                    <Text style={[styles.techChipText, { color: T.textMuted }]}>{c.model}</Text>
-                  </View>
-                )}
-                {c.power_kw && (
-                  <View style={[styles.techChip, { backgroundColor: T.greenFaint, borderColor: T.greenDark }]}>
-                    <Text style={[styles.techChipText, { color: T.greenLight }]}>
-                      ~{Math.round(c.power_kw * 0.9)} km/h
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Precio cobrado al conductor */}
-              {editingPrice === c.id ? (
-                <View style={styles.priceEditor}>
-                  <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
-                    keyboardType="numeric" placeholder="Ej: 1100" placeholderTextColor={T.textMuted} autoFocus />
-                  <Text style={styles.priceUnit}>COP/kWh</Text>
-                  <TouchableOpacity style={styles.priceSave} onPress={() => savePrice(c.id)}>
-                    <Feather name="check" size={18} color="#fdfbf7" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
-                    <Feather name="x" size={18} color={T.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity style={styles.priceRow} onPress={() => { setEditingPrice(c.id); setNewPrice(String(c.price_per_kwh || '')); }}>
-                  <View>
-                    <Text style={styles.priceLabel}>Precio al conductor</Text>
-                    <Text style={styles.priceValue}>$ {(c.price_per_kwh || 0).toLocaleString('es-CO')} / kWh</Text>
-                    <Text style={styles.priceUserNote}>Conductor paga: $ {Math.round((c.price_per_kwh || 0) * 1.1).toLocaleString('es-CO')} (+10% CPO)</Text>
-                  </View>
-                  <Feather name="edit-2" size={14} color={T.green} />
-                </TouchableOpacity>
-              )}
-
-              {/* Tarifa pico (18:00–22:00) */}
-              {editingPrice === `peak_${c.id}` ? (
-                <View style={styles.priceEditor}>
-                  <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
-                    keyboardType="numeric" placeholder="Vacío = quitar" placeholderTextColor={T.textMuted} autoFocus />
-                  <Text style={styles.priceUnit}>COP/kWh</Text>
-                  <TouchableOpacity style={styles.priceSave} onPress={async () => {
-                    const peak = parseFloat(newPrice);
-                    try {
-                      await apiFetch(`/chargers/${c.id}/peak-price`, {
-                        method: 'PATCH',
-                        body: JSON.stringify({ peak_price_per_kwh: peak > 0 ? peak : null }),
-                      }, token);
-                      setEditingPrice(null); fetchStatus();
-                      Alert.alert('Listo', peak > 0 ? `Tarifa pico de $ ${peak.toLocaleString('es-CO')}/kWh activa de 6 a 10 pm` : 'Tarifa pico desactivada — precio único todo el día');
-                    } catch (e) { Alert.alert('Error', e.message); }
-                  }}>
-                    <Feather name="check" size={18} color="#fdfbf7" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
-                    <Feather name="x" size={18} color={T.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity style={[styles.priceRow, { marginTop: 4, backgroundColor: 'transparent', borderTopWidth: 1, borderTopColor: T.cardBorder }]}
-                  onPress={() => { setEditingPrice(`peak_${c.id}`); setNewPrice(String(c.peak_price_per_kwh || '')); }}>
-                  <View>
-                    <Text style={styles.priceLabel}>Tarifa pico (6–10 pm)</Text>
-                    <Text style={[styles.priceValue, !c.peak_price_per_kwh && { color: T.textMuted, fontSize: 13 }]}>
-                      {c.peak_price_per_kwh ? `$ ${c.peak_price_per_kwh.toLocaleString('es-CO')} / kWh` : 'Sin tarifa pico — toca para fijarla'}
-                    </Text>
-                  </View>
-                  <Feather name="edit-2" size={14} color={c.peak_price_per_kwh ? T.green : T.textMuted} />
-                </TouchableOpacity>
-              )}
-
-              {/* Costo electricidad */}
-              {editingPrice === `cost_${c.id}` ? (
-                <View style={styles.priceEditor}>
-                  <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
-                    keyboardType="numeric" placeholder="Ej: 650" placeholderTextColor={T.textMuted} autoFocus />
-                  <Text style={styles.priceUnit}>COP/kWh</Text>
-                  <TouchableOpacity style={styles.priceSave} onPress={async () => {
-                    const cost = parseFloat(newPrice);
-                    if (!cost || cost <= 0) return;
-                    await apiFetch(`/chargers/${c.id}/cost`, { method: 'PATCH', body: JSON.stringify({ cost_per_kwh: cost }) }, token);
-                    setEditingPrice(null); fetchStatus(); fetchEarnings();
-                    Alert.alert('Listo', 'Costo de electricidad actualizado');
-                  }}>
-                    <Feather name="check" size={18} color="#fdfbf7" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
-                    <Feather name="x" size={18} color={T.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity style={[styles.priceRow, { marginTop: 4, backgroundColor: 'transparent', borderTopWidth: 1, borderTopColor: T.cardBorder }]}
-                  onPress={() => { setEditingPrice(`cost_${c.id}`); setNewPrice(String(c.cost_per_kwh || '')); }}>
-                  <View>
-                    <Text style={styles.priceLabel}>Mi costo electricidad</Text>
-                    <Text style={[styles.priceValue, { fontSize: 13 }]}>
-                      $ {(c.cost_per_kwh || 0).toLocaleString('es-CO')} / kWh
-                      <Text style={styles.priceUserNote}>  (actualizar con la factura)</Text>
-                    </Text>
-                    <Text style={styles.plPos}>
-                      Margen por kWh: $ {Math.round(((c.price_per_kwh || 0) * 0.9) - (c.cost_per_kwh || 0)).toLocaleString('es-CO')}
-                    </Text>
-                  </View>
-                  <Feather name="edit-2" size={14} color={T.textMuted} />
-                </TouchableOpacity>
-              )}
-
-              {/* Acciones */}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, borderTopWidth: 1, borderTopColor: T.cardBorder, paddingTop: 10, flexWrap: 'wrap' }}>
-                {/* Pausa / Reanudar */}
-                {c.status !== 'Offline' && c.status !== 'Charging' && (
-                  <TouchableOpacity
-                    style={[styles.btn, { flex: 1, minWidth: 90, marginTop: 0, paddingVertical: 9,
-                      backgroundColor: c.status === 'Unavailable' ? T.greenFaint : T.surface,
-                      borderWidth: 1, borderColor: c.status === 'Unavailable' ? T.greenDark : T.cardBorder }]}
-                    onPress={() => togglePause(c)}
-                  >
-                    <Feather name={c.status === 'Unavailable' ? 'play' : 'pause'} size={13}
-                      color={c.status === 'Unavailable' ? T.green : T.textMuted} />
-                    <Text style={[styles.btnText, { fontSize: 12, color: c.status === 'Unavailable' ? T.green : T.textMuted }]}>
-                      {c.status === 'Unavailable' ? 'Reanudar' : 'Pausar'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Eliminar */}
-                <TouchableOpacity
-                  style={[styles.btn, { flex: 1, minWidth: 90, marginTop: 0, paddingVertical: 9,
-                    backgroundColor: '#fbe7e7', borderWidth: 1, borderColor: '#b91c1c' }]}
-                  onPress={() => deleteCharger(c)}
-                >
-                  <Feather name="trash-2" size={13} color={T.dangerText} />
-                  <Text style={[styles.btnText, { fontSize: 12, color: T.dangerText }]}>Eliminar</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
 
           {/* Saldo disponible y retiro */}
           {balance && (
@@ -1892,24 +1823,43 @@ export default function App() {
                   <Text style={{ color: T.green, fontSize: 12, fontWeight: '600' }}>Exportar CSV</Text>
                 </TouchableOpacity>
               </View>
-              {earnings.sessions.map(s => (
-                <View key={s.id} style={styles.sessionHistCard}>
-                  <View style={styles.sessionHistHeader}>
-                    <Text style={styles.sessionHistId}>{s.charger_id}</Text>
-                    <Text style={styles.sessionHistRevenue}>+ $ {s.net_profit_owner.toLocaleString('es-CO')}</Text>
+              <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6 }}>{earnings.sessions.length} sesiones · exporta el CSV para verlas todas</Text>
+              {earnings.sessions.slice(0, ownerSessionsShown).map(s => {
+                const who = (s.session_user || '').includes('@')
+                  ? s.session_user.slice(0, 3) + '•••@' + s.session_user.split('@')[1]
+                  : (s.session_user || 'Conductor');
+                const when = s.ended_at || s.started_at
+                  ? new Date(s.ended_at || s.started_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+                  : '—';
+                return (
+                  <View key={s.id} style={styles.sessionHistCard}>
+                    <View style={styles.sessionHistHeader}>
+                      <Text style={styles.sessionHistId}>{s.charger_id}</Text>
+                      <Text style={styles.sessionHistRevenue}>+ $ {s.net_profit_owner.toLocaleString('es-CO')}</Text>
+                    </View>
+                    <Text style={styles.sessionHistLocation}>{s.location}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <Feather name="user" size={11} color={T.textMuted} />
+                      <Text style={styles.sessionHistDetail}>{who}</Text>
+                      <Text style={[styles.sessionHistDetail, { marginLeft: 'auto' }]}>{when}</Text>
+                    </View>
+                    <View style={styles.sessionHistRow}>
+                      <Text style={styles.sessionHistDetail}>{s.kwh_delivered} kWh</Text>
+                      <Text style={styles.sessionHistDetail}>Luz: $ {s.electricity_cost.toLocaleString('es-CO')}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.sessionHistLocation}>{s.location}</Text>
-                  <View style={styles.sessionHistRow}>
-                    <Text style={styles.sessionHistDetail}>{s.kwh_delivered} kWh</Text>
-                    <Text style={styles.sessionHistDetail}>Luz: $ {s.electricity_cost.toLocaleString('es-CO')}</Text>
-                    <Text style={styles.sessionHistDetail}>
-                      {s.ended_at || s.started_at
-                        ? new Date(s.ended_at || s.started_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
-                        : '—'}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
+              {earnings.sessions.length > 6 && (
+                <TouchableOpacity style={{ paddingVertical: 10, alignItems: 'center' }}
+                  onPress={() => setOwnerSessionsShown(n => n < earnings.sessions.length ? n + 10 : 6)}>
+                  <Text style={{ color: T.green, fontSize: 13, fontWeight: '600' }}>
+                    {ownerSessionsShown < earnings.sessions.length
+                      ? `Ver ${Math.min(10, earnings.sessions.length - ownerSessionsShown)} más`
+                      : 'Ver menos'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
@@ -2152,7 +2102,7 @@ export default function App() {
             { id: 'mapa',   icon: 'map-pin',       label: 'Mapa'       },
             { id: 'lista',  icon: 'list',          label: 'Cargadores' },
           ] : isOwner ? [
-            { id: 'lista',   icon: 'zap',         label: 'Cargadores' },
+            { id: 'lista',   icon: 'zap',         label: 'Mis cargadores' },
             { id: 'mapa',    icon: 'map-pin',      label: 'Mapa'       },
             { id: 'negocio', icon: 'bar-chart-2',  label: 'Negocio'    },
           ] : [
