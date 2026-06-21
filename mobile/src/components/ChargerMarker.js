@@ -1,11 +1,13 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { T, STATUS_COLOR } from '../theme';
 
-// NOTA DE ESTABILIDAD: los marcadores de react-native-maps deben ser SOLO View+Text.
-// Meter react-native-svg o íconos de fuente dentro de un <Marker> hace que en Android
-// los pines DESAPAREZCAN al hacer zoom/redibujar el mapa. Por eso aquí no hay SVG.
+// MARCADORES SOLO View+Text (sin SVG ni íconos de fuente — en Android desaparecen
+// dentro de un <Marker>). Patrón anti-flicker/recorte en Android:
+//   tracksViewChanges arranca en true → se captura al terminar de medir (onLayout)
+//   → se CONGELA (false). Se re-activa solo si cambia el contenido. collapsable={false}
+//   evita que Android "optimice" la vista y la capture vacía/recortada.
 
 export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => {
   const color   = STATUS_COLOR[charger.status] || T.offline;
@@ -15,16 +17,20 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   const specs   = [charger.power_kw ? `${charger.power_kw} kW` : null, charger.connector_type]
                     .filter(Boolean).join(' · ');
 
-  // Los faros son POCOS y ahora son solo View+Text (sin SVG) → tracksViewChanges
-  // SIEMPRE en true: el pin se re-captura solo y NUNCA queda en blanco aunque los
-  // marcadores de la API se monten/desmonten alrededor (esa era la causa real).
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => { setTracks(true); }, [
+    charger.status, charger.price_per_kwh, charger.price_per_kwh_now,
+    charger.power_kw, charger.connector_type, isSelected, isMine,
+  ]);
+
   const d = isSelected ? 30 : 24;
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 1.0 }}
+      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 1.0 }}
       zIndex={isSelected ? 9 : 5}>
-      <View style={{ alignItems: 'center' }}>
+      <View style={{ alignItems: 'center' }} collapsable={false}
+        onLayout={() => setTracks(false)}>
         {/* Burbuja: precio + potencia + enchufe */}
         {(price > 0 || specs) && (
           <View style={{ backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 7, paddingVertical: 3,
@@ -37,7 +43,7 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
           </View>
         )}
 
-        {/* Pin: círculo de color (estado) con centro claro. Sin SVG/íconos. */}
+        {/* Pin: círculo de color (estado) con centro claro. */}
         <View style={{
           width: d, height: d, borderRadius: d / 2, backgroundColor: color,
           alignItems: 'center', justifyContent: 'center',
@@ -45,7 +51,6 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
           borderWidth: isMine ? 3 : 2, borderColor: isMine ? '#faf7f1' : 'rgba(255,255,255,0.7)',
           shadowColor: '#2b2520', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4,
         }}>
-          {/* centro: marfil si está cargando (resalta), si no un punto pequeño */}
           <View style={{ width: isCharg ? d * 0.5 : d * 0.32, height: isCharg ? d * 0.5 : d * 0.32,
             borderRadius: d, backgroundColor: isCharg ? '#faf7f1' : 'rgba(255,255,255,0.85)' }} />
         </View>
@@ -68,32 +73,21 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   prev.isMine === next.isMine
 );
 
-// Grupo de cargadores (clustering): burbuja cobre con el número. Al tocar, se acerca.
-export const ClusterMarker = memo(({ lat, lng, count, onPress }) => {
-  const d = count < 10 ? 38 : count < 100 ? 46 : 54;
+// Cargador externo (Open Charge Map) — pastilla NEGRA con la potencia, capa de abajo.
+export const ExternalMarker = memo(({ charger, onPress }) => {
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => { setTracks(true); }, [charger.power_kw]);
   return (
-    <Marker coordinate={{ latitude: lat, longitude: lng }} onPress={onPress}
-      anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} zIndex={3}>
-      <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: '#b45309',
-        alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(250,247,241,0.9)',
-        shadowColor: '#2b2520', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 5 }}>
-        <Text style={{ color: '#faf7f1', fontWeight: '800', fontSize: count < 100 ? 15 : 13 }}>{count}</Text>
+    <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
+      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 0.5 }}
+      zIndex={0} opacity={0.95}>
+      <View collapsable={false} onLayout={() => setTracks(false)}
+        style={{ backgroundColor: '#2b2520', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+          borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' }}>
+        <Text style={{ color: '#faf7f1', fontSize: 9.5, fontWeight: '700' }}>
+          {charger.power_kw ? `${charger.power_kw} kW` : '·'}
+        </Text>
       </View>
     </Marker>
   );
-}, (prev, next) => prev.count === next.count && prev.lat === next.lat && prev.lng === next.lng);
-
-// Cargador externo (Open Charge Map) — pastilla NEGRA con la potencia, en la capa
-// de abajo (zIndex 0) para que NO tape las burbujas de los faros. Solo View+Text.
-export const ExternalMarker = memo(({ charger, onPress }) => (
-  <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-    onPress={onPress} tracksViewChanges={false} anchor={{ x: 0.5, y: 0.5 }}
-    zIndex={0} opacity={0.95}>
-    <View style={{ backgroundColor: '#2b2520', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' }}>
-      <Text style={{ color: '#faf7f1', fontSize: 9.5, fontWeight: '700' }}>
-        {charger.power_kw ? `${charger.power_kw} kW` : '·'}
-      </Text>
-    </View>
-  </Marker>
-), (prev, next) => prev.charger.id === next.charger.id && prev.charger.power_kw === next.charger.power_kw);
+}, (prev, next) => prev.charger.id === next.charger.id && prev.charger.power_kw === next.charger.power_kw);
