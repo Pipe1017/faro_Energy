@@ -107,12 +107,26 @@ async def external_chargers(db: AsyncSession = Depends(get_db)):
         if any(_haversine_m(lat, lng, fl, fg) < 80 for fl, fg in faro_pts):
             continue  # ya es un cargador Faro
         op = (p.get("OperatorInfo") or {}).get("Title")
+        # Potencia máx y tipo de conector desde las conexiones del POI
+        conns = p.get("Connections") or []
+        powers = [c.get("PowerKW") for c in conns if c.get("PowerKW")]
+        power_kw = round(max(powers)) if powers else None
+        conn_type = None
+        for c in conns:
+            ct = (c.get("ConnectionType") or {}).get("Title")
+            if ct:
+                conn_type = ct
+                break
         out.append({
             "id": f"ocm-{p.get('ID')}",
             "lat": lat, "lng": lng,
             "title": ai.get("Title") or "Cargador público",
             "town": ai.get("Town"),
+            "address": ai.get("AddressLine1"),
             "operator": op,
+            "power_kw": power_kw,
+            "connector": conn_type,
+            "connections": len(conns) or None,
         })
     _ocm_cache["at"] = now
     _ocm_cache["data"] = out

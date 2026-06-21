@@ -22,7 +22,8 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 1.0 }}>
+      onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 1.0 }}
+      zIndex={isSelected ? 9 : 5}>
       <View style={{ alignItems: 'center' }}>
         {/* Burbuja: precio + potencia + enchufe */}
         {(price > 0 || specs) && (
@@ -67,12 +68,17 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   prev.isMine === next.isMine
 );
 
-// Cargador externo (Open Charge Map) — punto hueco gris, claramente distinto.
-// Solo View, sin íconos → estable.
+// Cargador externo (Open Charge Map) — pastilla NEGRA con la potencia, en la capa
+// de abajo (zIndex 0) para que NO tape las burbujas de los faros. Solo View+Text.
 export const ExternalMarker = memo(({ charger, onPress }) => (
   <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-    onPress={onPress} tracksViewChanges={false} anchor={{ x: 0.5, y: 0.5 }} opacity={0.9}>
-    <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#faf7f1',
-      borderWidth: 2, borderColor: T.textMuted }} />
+    onPress={onPress} tracksViewChanges={false} anchor={{ x: 0.5, y: 0.5 }}
+    zIndex={0} opacity={0.95}>
+    <View style={{ backgroundColor: '#2b2520', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' }}>
+      <Text style={{ color: '#faf7f1', fontSize: 9.5, fontWeight: '700' }}>
+        {charger.power_kw ? `${charger.power_kw} kW` : '·'}
+      </Text>
+    </View>
   </Marker>
-), (prev, next) => prev.charger.id === next.charger.id);
+), (prev, next) => prev.charger.id === next.charger.id && prev.charger.power_kw === next.charger.power_kw);

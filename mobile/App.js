@@ -2308,6 +2308,35 @@ export default function App() {
                 </View>
               )}
 
+              {/* Estimación fácil para quien no sabe de carga */}
+              {priceUser && c.power_kw && (() => {
+                const kwhHour  = Math.round(c.power_kw * 0.9 * 10) / 10;   // ~kWh en 1 hora
+                const costHour = Math.round(kwhHour * priceUser);
+                const kmHour   = Math.round(kwhHour * 5);                   // ~5 km por kWh
+                return (
+                  <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: T.cardBorder }}>
+                    <Text style={{ color: T.textMuted, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>EN 1 HORA DE CARGA (APROX.)</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>{kwhHour} kWh</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>energía</Text></View>
+                      <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>~{kmHour} km</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>autonomía</Text></View>
+                      <View><Text style={{ color: T.green, fontWeight: '800', fontSize: 16 }}>$ {costHour.toLocaleString('es-CO')}</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>costo aprox.</Text></View>
+                    </View>
+                    <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 6 }}>Aproximado; depende de tu carro y su velocidad de carga.</Text>
+                  </View>
+                );
+              })()}
+
+              {/* Saldo del conductor (para saber si le alcanza) */}
+              {!isOwner && wallet && priceUser > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.greenFaint, borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: T.greenDark }}>
+                  <Feather name="credit-card" size={14} color={T.green} />
+                  <Text style={{ color: T.textSec, fontSize: 12, flex: 1 }}>
+                    Tu saldo: <Text style={{ fontWeight: '800', color: T.green }}>$ {(wallet.balance_cop || 0).toLocaleString('es-CO')}</Text>
+                    {` · te alcanza ~${Math.floor((wallet.balance_cop || 0) / priceUser)} kWh (~${Math.round((wallet.balance_cop || 0) / priceUser * 5)} km)`}
+                  </Text>
+                </View>
+              )}
+
               {/* Cómo llegar */}
               <TouchableOpacity
                 style={[styles.btn, styles.btnDirections]}
@@ -2969,16 +2998,24 @@ export default function App() {
           <View style={styles.modal}>
             <View style={styles.mapPanelHandle} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', borderWidth: 2, borderColor: T.textMuted }} />
+              <View style={{ backgroundColor: '#2b2520', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ color: '#faf7f1', fontSize: 10, fontWeight: '700' }}>{externalPick.power_kw ? `${externalPick.power_kw} kW` : 'no-Faro'}</Text>
+              </View>
               <Text style={styles.modalTitle}>{externalPick.title}</Text>
             </View>
             <Text style={styles.mapPanelLocation}>
-              {externalPick.operator ? externalPick.operator + ' · ' : ''}{externalPick.town || 'Colombia'}
+              {externalPick.operator ? externalPick.operator + ' · ' : ''}{externalPick.address || externalPick.town || 'Colombia'}
             </Text>
+            {/* Specs disponibles del externo */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+              {externalPick.power_kw && <View style={styles.specChip}><Text style={styles.specText}>⚡ {externalPick.power_kw} kW</Text></View>}
+              {externalPick.connector && <View style={styles.specChip}><Text style={styles.specText}>{externalPick.connector}</Text></View>}
+              {externalPick.connections > 1 && <View style={styles.specChip}><Text style={styles.specText}>{externalPick.connections} conectores</Text></View>}
+            </View>
             <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 12, marginTop: 12, borderWidth: 1, borderColor: T.cardBorder }}>
               <Text style={{ color: T.textSec, fontSize: 13, lineHeight: 19 }}>
-                Este cargador público <Text style={{ fontWeight: '700', color: T.textPri }}>aún no es parte de Faro</Text>.
-                Próximamente: pago con saldo, precio claro y reparto automático.
+                Cargador público <Text style={{ fontWeight: '700', color: T.textPri }}>que aún no es parte de Faro</Text>.
+                Con Faro tendrías: pago con saldo, precio claro y reparto automático.
               </Text>
             </View>
             <TouchableOpacity
