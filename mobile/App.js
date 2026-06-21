@@ -3,16 +3,17 @@ import {
   StyleSheet, Text, View, FlatList, TextInput,
   TouchableOpacity, RefreshControl, StatusBar, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-  ImageBackground, Linking, Keyboard, Animated, Vibration, Easing,
+  ImageBackground, Image, Linking, Keyboard, Animated, Vibration, Easing,
 } from 'react-native';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import * as SecureStore from 'expo-secure-store';
+import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 // ── Módulos extraídos (ver src/) ──
 import { T, STATUS_COLOR } from './src/theme';
-import { API_URL, apiFetch } from './src/api';
+import { API_URL, apiFetch, apiUpload } from './src/api';
 import { MEDELLIN, formatElapsed } from './src/constants';
 import { KbSheet } from './src/hooks';
 import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
@@ -118,6 +119,9 @@ export default function App() {
   const geoTimeout                  = useRef(null);
   const [selectedCharger, setSelectedCharger] = useState(null); // para mapa (pin highlight)
   const [chargerPanel, setChargerPanel] = useState(null);       // panel de acciones (lista + mapa)
+  const [chargerPhotos, setChargerPhotos] = useState({});       // { [chargerId]: [{id,url}] } fotos del cargador
+  const [photoBusy, setPhotoBusy] = useState(null);             // id del cargador subiendo foto
+  const [photoView, setPhotoView] = useState(null);             // {url} foto en pantalla completa
   const [externalChargers, setExternalChargers] = useState([]); // OCM: públicos que aún no son Faro
   const [externalPick, setExternalPick] = useState(null);       // pin externo tocado
   const [qrModal, setQrModal]       = useState(null);
@@ -667,6 +671,56 @@ export default function App() {
 
   // ── Gestión de cargadores (dueño) ──────────────────────────────────────────
 
+  // ── Fotos del cargador ──────────────────────────────────────────────────────
+  const photoUri = (p) => `${API_URL}${p.url}`;                 // URL absoluta para <Image>
+  const loadPhotos = useCallback(async (id) => {
+    try {
+      const d = await apiFetch(`/chargers/${id}/photos`, {}, token);
+      setChargerPhotos(prev => ({ ...prev, [id]: d.photos || [] }));
+    } catch {}
+  }, [token]);
+
+  const addPhoto = async (id) => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('Permiso', 'Necesito acceso a tus fotos para subirlas.'); return; }
+      const r = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.6,
+      });
+      if (r.canceled || !r.assets?.length) return;
+      const a = r.assets[0];
+      setPhotoBusy(id);
+      await apiUpload(`/chargers/${id}/photos`,
+        { uri: a.uri, name: a.fileName || 'foto.jpg', type: a.mimeType || 'image/jpeg' }, token);
+      await loadPhotos(id);
+    } catch (e) { Alert.alert('No se pudo subir', e.message); }
+    finally { setPhotoBusy(null); }
+  };
+
+  const removePhoto = (id, photoId) => {
+    Alert.alert('Eliminar foto', '¿Quitar esta foto del cargador?', [
+      { text: 'Cancelar' },
+      { text: 'Eliminar', style: 'destructive', onPress: async () => {
+        try { await apiFetch(`/chargers/${id}/photos/${photoId}`, { method: 'DELETE' }, token); await loadPhotos(id); }
+        catch (e) { Alert.alert('Error', e.message); }
+      } },
+    ]);
+  };
+
+  // Al abrir el panel de un cargador (conductor o dueño), trae sus fotos.
+  useEffect(() => {
+    const id = chargerPanel?.id || selectedCharger?.id;
+    if (id && token) loadPhotos(id);
+  }, [chargerPanel?.id, selectedCharger?.id, token, loadPhotos]);
+
+  // Para el dueño: precarga las fotos de sus propios cargadores (para las tarjetas).
+  useEffect(() => {
+    if (user?.role !== 'owner' || !token) return;
+    chargers.filter(c => c.owner_id === user?.id)
+            .forEach(c => { if (!chargerPhotos[c.id]) loadPhotos(c.id); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, token, chargers]);
+
   // Abre el modal unificado para AGREGAR (en blanco, costo por defecto)
   const openNewCharger = () => {
     setChargerForm({ id: null, location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2',
@@ -989,6 +1043,35 @@ export default function App() {
           {item.power_kw       && <View style={styles.specChip}><Text style={styles.specText}>⚡ {item.power_kw} kW</Text></View>}
           {item.connector_type && <View style={styles.specChip}><Text style={styles.specText}>{item.connector_type}</Text></View>}
         </View>
+
+        {/* Fotos del cargador — el dueño agrega/quita; el conductor las ve al tocarlo */}
+        {(() => {
+          const photos = chargerPhotos[item.id] || [];
+          const busy   = photoBusy === item.id;
+          return (
+            <View style={{ marginTop: 4, marginBottom: 8 }}>
+              <Text style={styles.priceLabel}>Fotos del cargador <Text style={{ color: T.textMuted }}>({photos.length}/6)</Text></Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                {photos.map(p => (
+                  <View key={p.id} style={{ marginRight: 8 }}>
+                    <TouchableOpacity activeOpacity={0.9} onPress={() => setPhotoView({ url: photoUri(p) })}>
+                      <Image source={{ uri: photoUri(p) }} style={styles.ownerPhotoThumb} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.photoDelBtn} onPress={() => removePhoto(item.id, p.id)}>
+                      <Feather name="x" size={12} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {photos.length < 6 && (
+                  <TouchableOpacity style={styles.photoAddBtn} onPress={() => addPhoto(item.id)} disabled={busy}>
+                    {busy ? <ActivityIndicator size="small" color={T.green} />
+                          : <><Feather name="camera" size={18} color={T.green} /><Text style={styles.photoAddText}>Agregar</Text></>}
+                  </TouchableOpacity>
+                )}
+              </ScrollView>
+            </View>
+          );
+        })()}
 
         {/* Sesión activa — vista del dueño */}
         {isCharging && item.current_kwh != null && (
@@ -2071,6 +2154,20 @@ export default function App() {
               )}
               {c.owner && <View style={styles.specChip}><Text style={styles.specText}>{c.owner}</Text></View>}
             </View>
+            {/* Fotos del cargador (las subió el dueño) */}
+            {(() => {
+              const photos = chargerPhotos[c.id] || [];
+              if (!photos.length) return null;
+              return (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {photos.map(p => (
+                    <TouchableOpacity key={p.id} activeOpacity={0.9} onPress={() => setPhotoView({ url: photoUri(p) })}>
+                      <Image source={{ uri: photoUri(p) }} style={styles.panelPhoto} />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              );
+            })()}
             {priceUser && (
               <View style={styles.mapPanelPrice}>
                 <Text style={styles.mapPanelPriceVal}>$ {priceUser.toLocaleString('es-CO')} / kWh</Text>
@@ -2350,6 +2447,21 @@ export default function App() {
                   <View style={styles.specChip}><Text style={styles.specText}>👍 {c.rating_pct}% ({c.rating_total})</Text></View>
                 )}
               </View>
+
+              {/* Fotos del cargador (las subió el dueño) */}
+              {(() => {
+                const photos = chargerPhotos[c.id] || [];
+                if (!photos.length) return null;
+                return (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                    {photos.map(p => (
+                      <TouchableOpacity key={p.id} activeOpacity={0.9} onPress={() => setPhotoView({ url: photoUri(p) })}>
+                        <Image source={{ uri: photoUri(p) }} style={styles.panelPhoto} />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                );
+              })()}
 
               {/* Precio */}
               {priceUser && (
@@ -3204,6 +3316,16 @@ export default function App() {
             </TouchableOpacity>
           </View>
         </View>
+      )}
+
+      {/* Visor de foto a pantalla completa */}
+      {photoView && (
+        <TouchableOpacity activeOpacity={1} style={styles.photoViewerOverlay} onPress={() => setPhotoView(null)}>
+          <Image source={{ uri: photoView.url }} style={styles.photoViewerImg} resizeMode="contain" />
+          <TouchableOpacity style={styles.photoViewerClose} onPress={() => setPhotoView(null)}>
+            <Feather name="x" size={26} color="#fff" />
+          </TouchableOpacity>
+        </TouchableOpacity>
       )}
     </View>
   );

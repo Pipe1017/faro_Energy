@@ -308,4 +308,14 @@ export const styles = StyleSheet.create({
   calloutSpec:      { color: T.textSec, fontSize: 11, backgroundColor: T.surface, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   calloutKwh:       { color: T.green, fontSize: 12, marginTop: 6, fontWeight: '700' },
   calloutOwner:     { color: T.textMuted, fontSize: 11, marginTop: 6 },
+
+  // ── Fotos del cargador ──────────────────────────────────────────────────────
+  ownerPhotoThumb:  { width: 76, height: 57, borderRadius: 8, backgroundColor: T.surface, borderWidth: 1, borderColor: T.cardBorder },
+  photoDelBtn:      { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#b91c1c', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  photoAddBtn:      { width: 76, height: 57, borderRadius: 8, borderWidth: 1.5, borderColor: T.greenDark, borderStyle: 'dashed', backgroundColor: T.greenFaint, alignItems: 'center', justifyContent: 'center' },
+  photoAddText:     { color: T.green, fontSize: 10, fontWeight: '700', marginTop: 2 },
+  panelPhoto:       { width: 130, height: 98, borderRadius: 10, marginRight: 8, backgroundColor: T.surface, borderWidth: 1, borderColor: T.cardBorder },
+  photoViewerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  photoViewerImg:   { width: '92%', height: '80%' },
+  photoViewerClose: { position: 'absolute', top: 50, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
 });

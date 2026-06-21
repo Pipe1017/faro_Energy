@@ -196,6 +196,26 @@ class Charger(Base):
         return d
 
 
+class ChargerPhoto(Base):
+    """Fotos del cargador subidas por el dueño (guardadas en MinIO / fallback local).
+    El conductor las ve al tocar el cargador. Los bytes viven en storage; aquí solo
+    el metadato y la llave del objeto."""
+    __tablename__ = "charger_photos"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    charger_id: Mapped[str] = mapped_column(String, ForeignKey("chargers.id"), index=True)
+    storage_key: Mapped[str] = mapped_column(String)            # llave del objeto en MinIO
+    content_type: Mapped[str] = mapped_column(String, default="image/jpeg")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict:
+        # URL relativa; el cliente le antepone su API base. El endpoint de bytes es
+        # público (sin token) para que el componente <Image> pueda cargarlo por URL.
+        return {"id": self.id, "charger_id": self.charger_id,
+                "url": f"/chargers/{self.charger_id}/photos/{self.id}"}
+
+
 class Reservation(Base):
     __tablename__ = "reservations"
 

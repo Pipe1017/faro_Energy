@@ -3,7 +3,7 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -14,8 +14,9 @@ from ocpp.v16.enums import AvailabilityType
 from database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerPhoto)
 from auth import get_current_user, hash_password, verify_password, create_token
+import storage
 import wompi as wompi_svc
 import sim as sim_mgr
 from config import *
@@ -306,6 +307,91 @@ async def set_availability(
     charger.status = ocpp_status
     await db.commit()
     return {"ok": True, "status": ocpp_status}
+
+
+# ── FOTOS DEL CARGADOR ────────────────────────────────────────────────────────
+# El dueño sube fotos de su cargador (en MinIO vía storage.put_bytes; si MinIO no
+# está configurado, caen al fallback local). El conductor las ve al tocar el pin.
+_MAX_PHOTOS    = 6
+_MAX_PHOTO_B   = 8 * 1024 * 1024  # 8 MB por foto
+_PHOTO_EXT     = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+@router.post("/chargers/{charge_point_id}/photos")
+async def add_charger_photo(
+    charge_point_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    charger = await db.get(Charger, charge_point_id)
+    if not charger:
+        raise HTTPException(404, "Cargador no encontrado")
+    if charger.owner_id != current_user.id:
+        raise HTTPException(403, "No es tu cargador")
+
+    existing = (await db.execute(
+        select(ChargerPhoto).where(ChargerPhoto.charger_id == charge_point_id)
+    )).scalars().all()
+    if len(existing) >= _MAX_PHOTOS:
+        raise HTTPException(400, f"Máximo {_MAX_PHOTOS} fotos por cargador")
+
+    ct = (file.content_type or "").lower()
+    if ct not in _PHOTO_EXT:
+        raise HTTPException(400, "Formato no soportado (usa JPG, PNG o WEBP)")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Archivo vacío")
+    if len(data) > _MAX_PHOTO_B:
+        raise HTTPException(400, "La foto es muy pesada (máx 8 MB)")
+
+    pid = secrets.token_hex(8)
+    key = f"charger-photos/{charge_point_id}/{pid}.{_PHOTO_EXT[ct]}"
+    storage.put_bytes(key, data, ct)
+    photo = ChargerPhoto(id=pid, charger_id=charge_point_id, storage_key=key, content_type=ct)
+    db.add(photo)
+    await db.commit()
+    logger.info(f"Foto {pid} subida a {charge_point_id} por {current_user.email}")
+    return photo.to_dict()
+
+
+@router.get("/chargers/{charge_point_id}/photos")
+async def list_charger_photos(charge_point_id: str, db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(ChargerPhoto).where(ChargerPhoto.charger_id == charge_point_id)
+                            .order_by(ChargerPhoto.created_at)
+    )).scalars().all()
+    return {"photos": [p.to_dict() for p in rows]}
+
+
+@router.get("/chargers/{charge_point_id}/photos/{photo_id}")
+async def get_charger_photo(charge_point_id: str, photo_id: str, db: AsyncSession = Depends(get_db)):
+    # Público (sin token) a propósito: lo carga el componente <Image> por URL.
+    photo = await db.get(ChargerPhoto, photo_id)
+    if not photo or photo.charger_id != charge_point_id:
+        raise HTTPException(404, "Foto no encontrada")
+    data = storage.get_bytes(photo.storage_key)
+    if data is None:
+        raise HTTPException(404, "Foto no encontrada")
+    return Response(content=data, media_type=photo.content_type,
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.delete("/chargers/{charge_point_id}/photos/{photo_id}")
+async def delete_charger_photo(
+    charge_point_id: str,
+    photo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    photo = await db.get(ChargerPhoto, photo_id)
+    if not photo or photo.charger_id != charge_point_id:
+        raise HTTPException(404, "Foto no encontrada")
+    charger = await db.get(Charger, charge_point_id)
+    if not charger or charger.owner_id != current_user.id:
+        raise HTTPException(403, "No es tu cargador")
+    await db.delete(photo)
+    await db.commit()
+    return {"ok": True}
 
 
 # ── SIMULADORES (gestión desde la app) ───────────────────────────────────────
