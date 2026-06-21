@@ -4,17 +4,17 @@
     Cobre #b45309 · Espresso #2b2520 · Sin gradientes
     Símbolo solo: usar el <g> con viewBox "0 0 44 64"
   -->
-  <g transform="translate(2,2) scale(0.87) translate(-38,-34)">
-    <!-- Linterna -->
-    <rect x="51.5" y="48" width="17" height="9" fill="#b45309"/>
+  <g transform="translate(22,32) scale(0.7) translate(-48,-59)">
     <!-- Techo -->
-    <path d="M60 33 L72 48 L48 48 Z" fill="#2b2520"/>
+    <path d="M48 16 L62 30 L34 30 Z" fill="#2b2520"/>
+    <!-- Linterna -->
+    <path d="M35 30 L61 30 L62 40 L34 40 Z" fill="#b45309"/>
     <!-- Torre -->
-    <path d="M54 57 L66 57 L71 99 L49 99 Z" fill="#2b2520"/>
+    <path d="M34 40 L62 40 L66 96 L30 96 Z" fill="#2b2520"/>
     <!-- Rayo calado -->
-    <path d="M61 64 L55 80 L59.5 80 L57 92 L66 74 L61 74 Z" fill="#faf7f1"/>
+    <path d="M51 46 L42 68 L48 68 L45 88 L57 64 L51 64 Z" fill="#faf7f1"/>
     <!-- Base -->
-    <rect x="45" y="99" width="30" height="5" rx="2.5" fill="#b45309"/>
+    <rect x="27" y="95" width="42" height="7" rx="2" fill="#b45309"/>
   </g>
   <text x="48" y="36" font-family="system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
         font-size="30" font-weight="800" letter-spacing="-0.8"><tspan fill="#2b2520">Faro</tspan><tspan fill="#b45309" dx="7">Energy</tspan></text>
