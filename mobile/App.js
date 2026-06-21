@@ -1914,7 +1914,7 @@ export default function App() {
           >
             {/* Externos (OCM): pastilla negra con potencia, capa de abajo. Siempre
                 renderizados (no se montan/desmontan por zoom) para no tumbar los faros. */}
-            {externalChargers.slice(0, 80).map(e => (
+            {externalChargers.slice(0, Platform.OS === 'android' ? 40 : 80).map(e => (
               <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
             ))}
             {chargers.filter(c => c.lat && c.lng).map(c => (

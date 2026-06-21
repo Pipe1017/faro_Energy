@@ -23,11 +23,16 @@ const pinShadow = Platform.OS === 'ios'
   ? { shadowColor: '#2b2520', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } }
   : null;
 
-// Hook: captura mientras se monta/cambia el contenido y luego congela.
+// tracksViewChanges por plataforma:
+//   ANDROID: SIEMPRE true. Al ponerlo en false Android guarda UNA sola foto del
+//     marcador y en muchos equipos sale recortada (media burbuja / 1/4 del precio)
+//     y se queda así. Manteniéndolo true se redibuja a tamaño completo (parpadeo leve).
+//   iOS: congelar tras medir (sin parpadeo, allá no recorta).
 function useFreeze(deps) {
   const [tracks, setTracks] = useState(true);
   const timer = useRef(null);
   useEffect(() => {
+    if (Platform.OS === 'android') { setTracks(true); return; }
     setTracks(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setTracks(false), 350);
