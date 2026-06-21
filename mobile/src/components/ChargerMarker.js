@@ -68,6 +68,21 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   prev.isMine === next.isMine
 );
 
+// Grupo de cargadores (clustering): burbuja cobre con el número. Al tocar, se acerca.
+export const ClusterMarker = memo(({ lat, lng, count, onPress }) => {
+  const d = count < 10 ? 38 : count < 100 ? 46 : 54;
+  return (
+    <Marker coordinate={{ latitude: lat, longitude: lng }} onPress={onPress}
+      anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={true} zIndex={3}>
+      <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: '#b45309',
+        alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(250,247,241,0.9)',
+        shadowColor: '#2b2520', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 5 }}>
+        <Text style={{ color: '#faf7f1', fontWeight: '800', fontSize: count < 100 ? 15 : 13 }}>{count}</Text>
+      </View>
+    </Marker>
+  );
+}, (prev, next) => prev.count === next.count && prev.lat === next.lat && prev.lng === next.lng);
+
 // Cargador externo (Open Charge Map) — pastilla NEGRA con la potencia, en la capa
 // de abajo (zIndex 0) para que NO tape las burbujas de los faros. Solo View+Text.
 export const ExternalMarker = memo(({ charger, onPress }) => (

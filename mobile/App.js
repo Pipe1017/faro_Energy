@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback, memo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
+import Supercluster from 'supercluster';
 import {
   StyleSheet, Text, View, FlatList, TextInput,
   TouchableOpacity, RefreshControl, StatusBar, Alert,
@@ -17,7 +18,7 @@ import { MEDELLIN, formatElapsed } from './src/constants';
 import { KbSheet } from './src/hooks';
 import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
 import { FaroLogo } from './src/components/FaroLogo';
-import { ChargerMarker, ExternalMarker } from './src/components/ChargerMarker';
+import { ChargerMarker, ExternalMarker, ClusterMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
 import { styles } from './src/styles';
 
@@ -95,6 +96,7 @@ export default function App() {
   const [chargerPanel, setChargerPanel] = useState(null);       // panel de acciones (lista + mapa)
   const [externalChargers, setExternalChargers] = useState([]); // OCM: públicos que aún no son Faro
   const [externalPick, setExternalPick] = useState(null);       // pin externo tocado
+  const [mapRegion, setMapRegion] = useState(MEDELLIN);         // región actual (para clustering)
   const [qrModal, setQrModal]       = useState(null);
   const [qrScanning, setQrScanning] = useState(false);
   const [myUsage, setMyUsage]       = useState(null);
@@ -1139,6 +1141,34 @@ export default function App() {
 
   const myChargers = chargers.filter(c => c.owner_id === user?.id);
 
+  // ── Clustering del mapa (supercluster) ──────────────────────────────────────
+  // Índice con TODOS los puntos (faros + externos). Se reconstruye solo si cambian.
+  const clusterIndex = useMemo(() => {
+    const pts = [];
+    chargers.forEach(c => {
+      if (c.lat && c.lng) pts.push({ type: 'Feature', properties: { kind: 'faro', id: c.id },
+        geometry: { type: 'Point', coordinates: [c.lng, c.lat] } });
+    });
+    externalChargers.slice(0, 80).forEach(e => {
+      if (e.lat && e.lng) pts.push({ type: 'Feature', properties: { kind: 'ext', id: e.id },
+        geometry: { type: 'Point', coordinates: [e.lng, e.lat] } });
+    });
+    const idx = new Supercluster({ radius: 55, maxZoom: 16 });
+    idx.load(pts);
+    return idx;
+  }, [chargers, externalChargers]);
+
+  // Clusters/puntos visibles en la región actual (solo lo del viewport → liviano).
+  const clusters = useMemo(() => {
+    const r = mapRegion;
+    if (!r || !r.longitudeDelta) return [];
+    const bbox = [r.longitude - r.longitudeDelta / 2, r.latitude - r.latitudeDelta / 2,
+                  r.longitude + r.longitudeDelta / 2, r.latitude + r.latitudeDelta / 2];
+    const zoom = Math.round(Math.log2(360 / Math.max(r.longitudeDelta, 0.0005)));
+    try { return clusterIndex.getClusters(bbox, Math.min(20, Math.max(1, zoom))); }
+    catch { return []; }
+  }, [clusterIndex, mapRegion]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -1883,27 +1913,39 @@ export default function App() {
             showsMyLocationButton={false}
             onPress={() => { Keyboard.dismiss(); setSelectedCharger(null); setMapSearch(''); setGeoResults([]); }}
             onRegionChangeComplete={r => {
+              setMapRegion(r);   // recalcula los clusters según la vista
               if (r.latitudeDelta > 0.07) setZoom('far');
               else if (r.latitudeDelta > 0.025) setZoom('mid');
               else setZoom('close');
             }}
           >
-            {/* Cargadores públicos no-Faro (Open Charge Map). Se renderizan SIEMPRE
-                (no se montan/desmontan por zoom) para no invalidar el snapshot de tus
-                faros — esa era la causa de que desaparecieran. */}
-            {externalChargers.slice(0, 80).map(e => (
-              <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
-            ))}
-            {chargers.filter(c => c.lat && c.lng).map(c => (
-              <ChargerMarker
-                key={c.id}
-                charger={c}
-                isSelected={selectedCharger?.id === c.id}
-                isMine={isOwner && c.owner_id === user?.id}
-                zoom={zoom}
-                onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }}
-              />
-            ))}
+            {/* Clustering: agrupa los pines cercanos al alejar (burbuja con número) y
+                los separa al acercar. Solo renderiza lo del viewport → liviano y fluido. */}
+            {clusters.map(f => {
+              const [lng, lat] = f.geometry.coordinates;
+              if (f.properties.cluster) {
+                return (
+                  <ClusterMarker key={`cl-${f.properties.cluster_id}`} lat={lat} lng={lng}
+                    count={f.properties.point_count}
+                    onPress={() => {
+                      const z = Math.min(16, clusterIndex.getClusterExpansionZoom(f.properties.cluster_id));
+                      const delta = 360 / Math.pow(2, z);
+                      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta }, 350);
+                    }} />
+                );
+              }
+              if (f.properties.kind === 'ext') {
+                const e = externalChargers.find(x => x.id === f.properties.id);
+                return e ? <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} /> : null;
+              }
+              const c = chargers.find(x => x.id === f.properties.id);
+              return c ? (
+                <ChargerMarker key={c.id} charger={c}
+                  isSelected={selectedCharger?.id === c.id}
+                  isMine={isOwner && c.owner_id === user?.id}
+                  onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
+              ) : null;
+            })}
           </MapView>
 
           {/* Crédito Open Charge Map (requerido por su licencia) */}

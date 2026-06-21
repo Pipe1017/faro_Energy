@@ -13,7 +13,8 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-maps": "1.20.1",
-    "react-native-svg": "15.12.1"
+    "react-native-svg": "15.12.1",
+    "supercluster": "^8.0.1"
   },
   "scripts": {
     "start": "expo start",
