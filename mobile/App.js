@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
-import Supercluster from 'supercluster';
 import {
   StyleSheet, Text, View, FlatList, TextInput,
   TouchableOpacity, RefreshControl, StatusBar, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-  ImageBackground, Linking, Keyboard,
+  ImageBackground, Linking, Keyboard, Animated, Vibration,
 } from 'react-native';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import * as SecureStore from 'expo-secure-store';
@@ -24,6 +23,46 @@ import { styles } from './src/styles';
 
 const IVA_RATE = 0.19;          // IVA Colombia (el conductor paga base × 1.19)
 const PLATFORM_MARGIN = 0.15;   // comisión Faro 15% (sobre la base)
+
+// Carga defensiva de supercluster: si falla (interop/ESM), el mapa cae a pines
+// normales en vez de quedar en pantalla negra.
+let Supercluster = null;
+try {
+  const _sc = require('supercluster');
+  Supercluster = _sc && _sc.default ? _sc.default : _sc;
+} catch (e) { Supercluster = null; }
+
+// Pantalla de inicio: faro con latido + vibración corta. On-brand y rápida.
+function BootSplash() {
+  const scale   = useRef(new Animated.Value(0.92)).current;
+  const opacity = useRef(new Animated.Value(0.55)).current;
+  useEffect(() => {
+    try { Vibration.vibrate(35); } catch (e) {}   // vibración corta al abrir
+    const loop = Animated.loop(Animated.sequence([
+      Animated.parallel([
+        Animated.timing(scale,   { toValue: 1.06, duration: 650, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1,    duration: 650, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(scale,   { toValue: 0.92, duration: 650, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.55, duration: 650, useNativeDriver: true }),
+      ]),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  return (
+    <View style={styles.bootScreen}>
+      <Animated.View style={{ transform: [{ scale }], opacity }}>
+        <FaroLogo height={104} />
+      </Animated.View>
+      <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 22, marginTop: 18, letterSpacing: -0.5 }}>
+        Faro<Text style={{ color: '#b45309' }}>Energy</Text>
+      </Text>
+      <Text style={{ color: '#94866f', fontSize: 11, marginTop: 4, letterSpacing: 2.5, fontWeight: '700' }}>CARGA INTELIGENTE</Text>
+    </View>
+  );
+}
 
 export default function App() {
   const [token, setToken]       = useState(null);
@@ -834,12 +873,7 @@ export default function App() {
   };
 
   if (booting) {
-    return (
-      <View style={styles.bootScreen}>
-        <Feather name="zap" size={48} color={T.green} />
-        <ActivityIndicator color={T.green} size="large" style={{ marginTop: 24 }} />
-      </View>
-    );
+    return <BootSplash />;
   }
 
   if (!token) {
@@ -1144,29 +1178,33 @@ export default function App() {
   // ── Clustering del mapa (supercluster) ──────────────────────────────────────
   // Índice con TODOS los puntos (faros + externos). Se reconstruye solo si cambian.
   const clusterIndex = useMemo(() => {
-    const pts = [];
-    chargers.forEach(c => {
-      if (c.lat && c.lng) pts.push({ type: 'Feature', properties: { kind: 'faro', id: c.id },
-        geometry: { type: 'Point', coordinates: [c.lng, c.lat] } });
-    });
-    externalChargers.slice(0, 80).forEach(e => {
-      if (e.lat && e.lng) pts.push({ type: 'Feature', properties: { kind: 'ext', id: e.id },
-        geometry: { type: 'Point', coordinates: [e.lng, e.lat] } });
-    });
-    const idx = new Supercluster({ radius: 55, maxZoom: 16 });
-    idx.load(pts);
-    return idx;
+    if (!Supercluster) return null;
+    try {
+      const pts = [];
+      chargers.forEach(c => {
+        if (c.lat && c.lng) pts.push({ type: 'Feature', properties: { kind: 'faro', id: c.id },
+          geometry: { type: 'Point', coordinates: [c.lng, c.lat] } });
+      });
+      externalChargers.slice(0, 80).forEach(e => {
+        if (e.lat && e.lng) pts.push({ type: 'Feature', properties: { kind: 'ext', id: e.id },
+          geometry: { type: 'Point', coordinates: [e.lng, e.lat] } });
+      });
+      const idx = new Supercluster({ radius: 55, maxZoom: 16 });
+      idx.load(pts);
+      return idx;
+    } catch (e) { return null; }
   }, [chargers, externalChargers]);
 
-  // Clusters/puntos visibles en la región actual (solo lo del viewport → liviano).
+  // Clusters/puntos del viewport. null = clustering no disponible → render normal.
   const clusters = useMemo(() => {
     const r = mapRegion;
-    if (!r || !r.longitudeDelta) return [];
-    const bbox = [r.longitude - r.longitudeDelta / 2, r.latitude - r.latitudeDelta / 2,
-                  r.longitude + r.longitudeDelta / 2, r.latitude + r.latitudeDelta / 2];
-    const zoom = Math.round(Math.log2(360 / Math.max(r.longitudeDelta, 0.0005)));
-    try { return clusterIndex.getClusters(bbox, Math.min(20, Math.max(1, zoom))); }
-    catch { return []; }
+    if (!clusterIndex || !r || !r.longitudeDelta) return null;
+    try {
+      const bbox = [r.longitude - r.longitudeDelta / 2, r.latitude - r.latitudeDelta / 2,
+                    r.longitude + r.longitudeDelta / 2, r.latitude + r.latitudeDelta / 2];
+      const zoom = Math.round(Math.log2(360 / Math.max(r.longitudeDelta, 0.0005)));
+      return clusterIndex.getClusters(bbox, Math.min(20, Math.max(1, zoom)));
+    } catch (e) { return null; }
   }, [clusterIndex, mapRegion]);
 
   return (
@@ -1919,18 +1957,20 @@ export default function App() {
               else setZoom('close');
             }}
           >
-            {/* Clustering: agrupa los pines cercanos al alejar (burbuja con número) y
-                los separa al acercar. Solo renderiza lo del viewport → liviano y fluido. */}
-            {clusters.map(f => {
+            {/* Clustering: agrupa pines al alejar y los separa al acercar. Si el
+                clustering no está disponible (clusters === null), cae a pines normales. */}
+            {clusters ? clusters.map(f => {
               const [lng, lat] = f.geometry.coordinates;
               if (f.properties.cluster) {
                 return (
                   <ClusterMarker key={`cl-${f.properties.cluster_id}`} lat={lat} lng={lng}
                     count={f.properties.point_count}
                     onPress={() => {
-                      const z = Math.min(16, clusterIndex.getClusterExpansionZoom(f.properties.cluster_id));
-                      const delta = 360 / Math.pow(2, z);
-                      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta }, 350);
+                      try {
+                        const z = Math.min(16, clusterIndex.getClusterExpansionZoom(f.properties.cluster_id));
+                        const delta = 360 / Math.pow(2, z);
+                        mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta }, 350);
+                      } catch (e) {}
                     }} />
                 );
               }
@@ -1945,7 +1985,19 @@ export default function App() {
                   isMine={isOwner && c.owner_id === user?.id}
                   onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
               ) : null;
-            })}
+            }) : (
+              <>
+                {externalChargers.slice(0, 80).map(e => (
+                  <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
+                ))}
+                {chargers.filter(c => c.lat && c.lng).map(c => (
+                  <ChargerMarker key={c.id} charger={c}
+                    isSelected={selectedCharger?.id === c.id}
+                    isMine={isOwner && c.owner_id === user?.id}
+                    onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
+                ))}
+              </>
+            )}
           </MapView>
 
           {/* Crédito Open Charge Map (requerido por su licencia) */}
