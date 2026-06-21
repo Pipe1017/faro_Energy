@@ -68,11 +68,11 @@ async function icon(IC, color = "#FFFFFF", size = 256) {
   // slides. Mismas formas del logo oficial, recortadas a su viewBox.
   const symSvg = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 32 40 74">
-       <rect x="52" y="44" width="16" height="14" rx="3" fill="#b45309"/>
-       <path d="M50 44 L60 34 L70 44 Z" fill="#2b2520"/>
-       <path d="M53 58 L67 58 L72 98 L48 98 Z" fill="#2b2520"/>
-       <path d="M62 64 L55 80 L60 80 L57 92 L66 75 L61 75 Z" fill="#faf7f1"/>
-       <rect x="42" y="98" width="36" height="5" rx="2.5" fill="#b45309"/>
+       <rect x="51.5" y="48" width="17" height="9" fill="#b45309"/>
+       <path d="M60 33 L72 48 L48 48 Z" fill="#2b2520"/>
+       <path d="M54 57 L66 57 L71 99 L49 99 Z" fill="#2b2520"/>
+       <path d="M61 64 L55 80 L59.5 80 L57 92 L66 74 L61 74 Z" fill="#faf7f1"/>
+       <rect x="45" y="99" width="30" height="5" rx="2.5" fill="#b45309"/>
      </svg>`);
   const symPng = "image/png;base64," + (await sharp(symSvg, { density: 600 }).resize({ width: 400 }).png().toBuffer()).toString("base64");
   const SYM_AR = 40 / 74; // ancho/alto del símbolo

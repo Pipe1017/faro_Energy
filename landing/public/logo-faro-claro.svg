@@ -6,15 +6,15 @@
   -->
   <g transform="translate(2,2) scale(0.87) translate(-38,-34)">
     <!-- Linterna -->
-    <rect x="52" y="44" width="16" height="14" rx="3" fill="#b45309"/>
+    <rect x="51.5" y="48" width="17" height="9" fill="#b45309"/>
     <!-- Techo -->
-    <path d="M50 44 L60 34 L70 44 Z" fill="#2b2520"/>
+    <path d="M60 33 L72 48 L48 48 Z" fill="#2b2520"/>
     <!-- Torre -->
-    <path d="M53 58 L67 58 L72 98 L48 98 Z" fill="#2b2520"/>
+    <path d="M54 57 L66 57 L71 99 L49 99 Z" fill="#2b2520"/>
     <!-- Rayo calado -->
-    <path d="M62 64 L55 80 L60 80 L57 92 L66 75 L61 75 Z" fill="#faf7f1"/>
+    <path d="M61 64 L55 80 L59.5 80 L57 92 L66 74 L61 74 Z" fill="#faf7f1"/>
     <!-- Base -->
-    <rect x="42" y="98" width="36" height="5" rx="2.5" fill="#b45309"/>
+    <rect x="45" y="99" width="30" height="5" rx="2.5" fill="#b45309"/>
   </g>
   <text x="48" y="36" font-family="system-ui, -apple-system, 'Segoe UI', Arial, sans-serif"
         font-size="30" font-weight="800" letter-spacing="-0.8"><tspan fill="#2b2520">Faro</tspan><tspan fill="#b45309" dx="7">Energy</tspan></text>
