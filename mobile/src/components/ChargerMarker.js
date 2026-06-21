@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo } from 'react';
 import { View, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { T, STATUS_COLOR } from '../theme';
@@ -15,20 +15,14 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   const specs   = [charger.power_kw ? `${charger.power_kw} kW` : null, charger.connector_type]
                     .filter(Boolean).join(' · ');
 
-  // Re-captura el snapshot un instante al cambiar algo real, luego lo congela.
-  // El render NO depende del zoom → mover/zoom no re-dibuja el pin.
-  const [tracks, setTracks] = useState(true);
-  useEffect(() => {
-    setTracks(true);
-    const t = setTimeout(() => setTracks(false), 600);
-    return () => clearTimeout(t);
-  }, [charger.status, charger.price_per_kwh, charger.price_per_kwh_now, isSelected, isMine, specs]);
-
+  // Los faros son POCOS y ahora son solo View+Text (sin SVG) → tracksViewChanges
+  // SIEMPRE en true: el pin se re-captura solo y NUNCA queda en blanco aunque los
+  // marcadores de la API se monten/desmonten alrededor (esa era la causa real).
   const d = isSelected ? 30 : 24;
 
   return (
     <Marker identifier={charger.id} coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 1.0 }}>
+      onPress={onPress} tracksViewChanges={true} anchor={{ x: 0.5, y: 1.0 }}>
       <View style={{ alignItems: 'center' }}>
         {/* Burbuja: precio + potencia + enchufe */}
         {(price > 0 || specs) && (

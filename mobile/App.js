@@ -1818,9 +1818,11 @@ export default function App() {
               else setZoom('close');
             }}
           >
-            {/* Cargadores públicos no-Faro (Open Charge Map): solo al acercar y acotados */}
-            {zoom === 'close' && externalChargers.slice(0, 120).map(e => (
-              <ExternalMarker key={e.id} charger={e} zoom={zoom} onPress={() => setExternalPick(e)} />
+            {/* Cargadores públicos no-Faro (Open Charge Map). Se renderizan SIEMPRE
+                (no se montan/desmontan por zoom) para no invalidar el snapshot de tus
+                faros — esa era la causa de que desaparecieran. */}
+            {externalChargers.slice(0, 80).map(e => (
+              <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
             ))}
             {chargers.filter(c => c.lat && c.lng).map(c => (
               <ChargerMarker
