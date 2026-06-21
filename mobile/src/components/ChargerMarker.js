@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect, useRef } from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, Platform, Animated } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { T, STATUS_COLOR } from '../theme';
 
@@ -55,6 +55,16 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
     charger.power_kw, charger.connector_type, isSelected, isMine,
   ]);
 
+  // "Pop" SOLO en el marcador seleccionado (uno a la vez → barato). Ocurre dentro de
+  // la ventana de captura (tracks vuelve a true al cambiar isSelected). duration<350ms
+  // para que termine antes de congelar en iOS.
+  const pop = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!isSelected) return;
+    pop.setValue(0.84);
+    Animated.timing(pop, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+  }, [isSelected, pop]);
+
   const d = isSelected ? 30 : 24;
 
   return (
@@ -62,7 +72,7 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
       onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 1.0 }}
       zIndex={isSelected ? 9 : 5}>
       {/* padding de respiro: evita que el borde del snapshot recorte la vista en Android */}
-      <View style={{ alignItems: 'center', padding: 4 }} collapsable={false}>
+      <Animated.View style={{ alignItems: 'center', padding: 4, transform: [{ scale: pop }] }} collapsable={false}>
         {/* Burbuja: precio + potencia + enchufe */}
         {(price > 0 || specs) && (
           <View style={{ backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 7, paddingVertical: 3,
@@ -91,7 +101,7 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
           borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 7,
           borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: color,
           opacity: isDown ? 0.5 : 1 }} />
-      </View>
+      </Animated.View>
     </Marker>
   );
 }, (prev, next) =>

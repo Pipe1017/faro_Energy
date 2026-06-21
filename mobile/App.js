@@ -8,6 +8,7 @@ import {
 import MapView, { Marker, Callout } from 'react-native-maps';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -48,6 +49,20 @@ function BootSplash() {
       </Animated.View>
     </View>
   );
+}
+
+// Panel que sube con resorte al aparecer. useNativeDriver → corre fuera del hilo JS
+// (60fps, no cuesta rendimiento del mapa).
+function SlideUp({ children, style }) {
+  const ty = useRef(new Animated.Value(36)).current;
+  const op = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(ty, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200, mass: 0.7 }),
+      Animated.timing(op, { toValue: 1, duration: 160, useNativeDriver: true }),
+    ]).start();
+  }, []);
+  return <Animated.View style={[style, { transform: [{ translateY: ty }], opacity: op }]}>{children}</Animated.View>;
 }
 
 export default function App() {
@@ -112,6 +127,7 @@ export default function App() {
   const [mapSearch, setMapSearch]   = useState('');
   const [geoResults, setGeoResults] = useState([]);  // resultados de lugares reales
   const [zoom, setZoom]             = useState('mid');
+  const [mapRegion, setMapRegion]   = useState(null);  // región visible (para culling en Android)
   const mapRef                      = useRef(null);
   const stoppingRef                 = useRef(false);   // guard de doble "Detener"
   const { coords: userCoords, status: locStatus, loading: locLoading, request: requestLocation } = useUserLocation();
@@ -670,6 +686,25 @@ export default function App() {
   };
 
   // ── Gestión de cargadores (dueño) ──────────────────────────────────────────
+
+  // Culling: en Android renderiza solo lo visible (+50% de margen) para que el mapa
+  // vuele. En iOS render todo (Apple Maps + pines congelados ya es fluido y estable,
+  // y desmontar hermanos allá podría dejar pines en blanco — ver lección de marcadores).
+  const inView = useCallback((lat, lng) => {
+    if (Platform.OS !== 'android' || !mapRegion || lat == null || lng == null) return true;
+    return Math.abs(lat - mapRegion.latitude)  <= mapRegion.latitudeDelta  * 0.75
+        && Math.abs(lng - mapRegion.longitude) <= mapRegion.longitudeDelta * 0.75;
+  }, [mapRegion]);
+
+  // Tap en un faro (mapa): háptica sutil + leve vuelo de cámara + panel compacto
+  // (no el sheet oscuro, así el mapa sigue visible y se ve el vuelo de cámara).
+  const tapCharger = (c) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelectedCharger(c); setMapSearch('');
+    if (c.lat != null && c.lng != null) {
+      mapRef.current?.animateCamera({ center: { latitude: c.lat, longitude: c.lng } }, { duration: 350 });
+    }
+  };
 
   // ── Fotos del cargador ──────────────────────────────────────────────────────
   const photoUri = (p) => `${API_URL}${p.url}`;                 // URL absoluta para <Image>
@@ -1990,21 +2025,23 @@ export default function App() {
             showsMyLocationButton={false}
             onPress={() => { Keyboard.dismiss(); setSelectedCharger(null); setMapSearch(''); setGeoResults([]); }}
             onRegionChangeComplete={r => {
+              setMapRegion(r);
               if (r.latitudeDelta > 0.07) setZoom('far');
               else if (r.latitudeDelta > 0.025) setZoom('mid');
               else setZoom('close');
             }}
           >
-            {/* Externos (OCM): pastilla negra con potencia, capa de abajo. Siempre
-                renderizados (no se montan/desmontan por zoom) para no tumbar los faros. */}
-            {externalChargers.slice(0, Platform.OS === 'android' ? 40 : 80).map(e => (
+            {/* Externos (OCM): pastilla negra con potencia, capa de abajo. En Android
+                solo los visibles (culling) para que vuele; en iOS todos (cap 80). */}
+            {externalChargers.filter(e => inView(e.lat, e.lng))
+              .slice(0, Platform.OS === 'android' ? 40 : 80).map(e => (
               <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
             ))}
-            {chargers.filter(c => c.lat && c.lng).map(c => (
+            {chargers.filter(c => c.lat && c.lng && inView(c.lat, c.lng)).map(c => (
               <ChargerMarker key={c.id} charger={c}
                 isSelected={selectedCharger?.id === c.id}
                 isMine={isOwner && c.owner_id === user?.id}
-                onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
+                onPress={() => tapCharger(c)} />
             ))}
           </MapView>
 
@@ -2128,7 +2165,7 @@ export default function App() {
         const distKm   = (userCoords && c.lat != null && c.lng != null)
           ? haversineKm(userCoords, { latitude: c.lat, longitude: c.lng }) : null;
         return (
-          <View style={styles.mapPanel}>
+          <SlideUp style={styles.mapPanel}>
             <View style={styles.mapPanelHandle} />
             <View style={styles.mapPanelHeader}>
               <View style={{ flex: 1 }}>
@@ -2174,6 +2211,39 @@ export default function App() {
                 <Text style={styles.mapPanelPriceNote}>IVA incluido</Text>
               </View>
             )}
+
+            {/* Estimación fácil (lento <50kW → 1h; rápido ≥50kW → 30 min) */}
+            {priceUser && c.power_kw && (() => {
+              const fast = c.power_kw >= 50;
+              const mins = fast ? 30 : 60;
+              const kwh  = Math.round(c.power_kw * 0.9 * (mins / 60) * 10) / 10;
+              const cost = Math.round(kwh * priceUser);
+              const km   = Math.round(kwh * 5);
+              return (
+                <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: T.cardBorder }}>
+                  <Text style={{ color: T.textMuted, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>
+                    EN {fast ? '30 MIN' : '1 HORA'} DE CARGA (APROX.)
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>{kwh} kWh</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>energía</Text></View>
+                    <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>~{km} km</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>autonomía</Text></View>
+                    <View><Text style={{ color: T.green, fontWeight: '800', fontSize: 16 }}>$ {cost.toLocaleString('es-CO')}</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>costo aprox.</Text></View>
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Saldo del conductor */}
+            {!isOwner && wallet && priceUser > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.greenFaint, borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: T.greenDark }}>
+                <Feather name="credit-card" size={14} color={T.green} />
+                <Text style={{ color: T.textSec, fontSize: 12, flex: 1 }}>
+                  Tu saldo: <Text style={{ fontWeight: '800', color: T.green }}>$ {(wallet.balance_cop || 0).toLocaleString('es-CO')}</Text>
+                  {` · ~${Math.floor((wallet.balance_cop || 0) / priceUser)} kWh`}
+                </Text>
+              </View>
+            )}
+
             <TouchableOpacity
               style={[styles.btn, styles.btnDirections]}
               onPress={() => openDirections({ lat: c.lat, lng: c.lng, label: c.location || c.id })}
@@ -2222,7 +2292,7 @@ export default function App() {
                 )}
               </View>
             )}
-          </View>
+          </SlideUp>
         );
       })()}
 
