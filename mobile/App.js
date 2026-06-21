@@ -872,6 +872,37 @@ export default function App() {
     }
   };
 
+  // ── Clustering del mapa (supercluster) — DEBE ir antes de cualquier return
+  //    condicional (regla de hooks: mismo orden en cada render). ──────────────
+  const clusterIndex = useMemo(() => {
+    if (!Supercluster) return null;
+    try {
+      const pts = [];
+      chargers.forEach(c => {
+        if (c.lat && c.lng) pts.push({ type: 'Feature', properties: { kind: 'faro', id: c.id },
+          geometry: { type: 'Point', coordinates: [c.lng, c.lat] } });
+      });
+      externalChargers.slice(0, 80).forEach(e => {
+        if (e.lat && e.lng) pts.push({ type: 'Feature', properties: { kind: 'ext', id: e.id },
+          geometry: { type: 'Point', coordinates: [e.lng, e.lat] } });
+      });
+      const idx = new Supercluster({ radius: 55, maxZoom: 16 });
+      idx.load(pts);
+      return idx;
+    } catch (e) { return null; }
+  }, [chargers, externalChargers]);
+
+  const clusters = useMemo(() => {
+    const r = mapRegion;
+    if (!clusterIndex || !r || !r.longitudeDelta) return null;
+    try {
+      const bbox = [r.longitude - r.longitudeDelta / 2, r.latitude - r.latitudeDelta / 2,
+                    r.longitude + r.longitudeDelta / 2, r.latitude + r.latitudeDelta / 2];
+      const zoom = Math.round(Math.log2(360 / Math.max(r.longitudeDelta, 0.0005)));
+      return clusterIndex.getClusters(bbox, Math.min(20, Math.max(1, zoom)));
+    } catch (e) { return null; }
+  }, [clusterIndex, mapRegion]);
+
   if (booting) {
     return <BootSplash />;
   }
@@ -1174,38 +1205,6 @@ export default function App() {
   };
 
   const myChargers = chargers.filter(c => c.owner_id === user?.id);
-
-  // ── Clustering del mapa (supercluster) ──────────────────────────────────────
-  // Índice con TODOS los puntos (faros + externos). Se reconstruye solo si cambian.
-  const clusterIndex = useMemo(() => {
-    if (!Supercluster) return null;
-    try {
-      const pts = [];
-      chargers.forEach(c => {
-        if (c.lat && c.lng) pts.push({ type: 'Feature', properties: { kind: 'faro', id: c.id },
-          geometry: { type: 'Point', coordinates: [c.lng, c.lat] } });
-      });
-      externalChargers.slice(0, 80).forEach(e => {
-        if (e.lat && e.lng) pts.push({ type: 'Feature', properties: { kind: 'ext', id: e.id },
-          geometry: { type: 'Point', coordinates: [e.lng, e.lat] } });
-      });
-      const idx = new Supercluster({ radius: 55, maxZoom: 16 });
-      idx.load(pts);
-      return idx;
-    } catch (e) { return null; }
-  }, [chargers, externalChargers]);
-
-  // Clusters/puntos del viewport. null = clustering no disponible → render normal.
-  const clusters = useMemo(() => {
-    const r = mapRegion;
-    if (!clusterIndex || !r || !r.longitudeDelta) return null;
-    try {
-      const bbox = [r.longitude - r.longitudeDelta / 2, r.latitude - r.latitudeDelta / 2,
-                    r.longitude + r.longitudeDelta / 2, r.latitude + r.latitudeDelta / 2];
-      const zoom = Math.round(Math.log2(360 / Math.max(r.longitudeDelta, 0.0005)));
-      return clusterIndex.getClusters(bbox, Math.min(20, Math.max(1, zoom)));
-    } catch (e) { return null; }
-  }, [clusterIndex, mapRegion]);
 
   return (
     <View style={styles.container}>
