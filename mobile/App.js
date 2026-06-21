@@ -3,7 +3,7 @@ import {
   StyleSheet, Text, View, FlatList, TextInput,
   TouchableOpacity, RefreshControl, StatusBar, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-  ImageBackground, Linking, Keyboard, Animated, Vibration,
+  ImageBackground, Linking, Keyboard, Animated, Vibration, Easing,
 } from 'react-native';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import * as SecureStore from 'expo-secure-store';
@@ -24,34 +24,27 @@ import { styles } from './src/styles';
 const IVA_RATE = 0.19;          // IVA Colombia (el conductor paga base × 1.19)
 const PLATFORM_MARGIN = 0.15;   // comisión Faro 15% (sobre la base)
 
-// Pantalla de inicio: faro con latido + vibración corta. On-brand y rápida.
+// Pantalla de inicio: el logo del faro CRECE (~1.5 s) con una vibración muy leve.
 function BootSplash() {
-  const scale   = useRef(new Animated.Value(0.92)).current;
-  const opacity = useRef(new Animated.Value(0.55)).current;
+  const scale   = useRef(new Animated.Value(0.55)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    try { Vibration.vibrate(35); } catch (e) {}   // vibración corta al abrir
-    const loop = Animated.loop(Animated.sequence([
-      Animated.parallel([
-        Animated.timing(scale,   { toValue: 1.06, duration: 650, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1,    duration: 650, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(scale,   { toValue: 0.92, duration: 650, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.55, duration: 650, useNativeDriver: true }),
-      ]),
-    ]));
-    loop.start();
-    return () => loop.stop();
+    // Vibración muy leve: dos toques cortísimos mientras crece.
+    try { Vibration.vibrate(Platform.OS === 'android' ? [0, 12, 120, 12] : 18); } catch (e) {}
+    Animated.parallel([
+      Animated.timing(scale,   { toValue: 1, duration: 1500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 700,  useNativeDriver: true }),
+    ]).start();
   }, []);
   return (
     <View style={styles.bootScreen}>
-      <Animated.View style={{ transform: [{ scale }], opacity }}>
-        <FaroLogo height={104} />
+      <Animated.View style={{ transform: [{ scale }], opacity, alignItems: 'center' }}>
+        <FaroLogo height={120} />
+        <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 24, marginTop: 18, letterSpacing: -0.5 }}>
+          Faro<Text style={{ color: '#b45309' }}>Energy</Text>
+        </Text>
+        <Text style={{ color: '#94866f', fontSize: 11, marginTop: 4, letterSpacing: 2.5, fontWeight: '700' }}>CARGA INTELIGENTE</Text>
       </Animated.View>
-      <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 22, marginTop: 18, letterSpacing: -0.5 }}>
-        Faro<Text style={{ color: '#b45309' }}>Energy</Text>
-      </Text>
-      <Text style={{ color: '#94866f', fontSize: 11, marginTop: 4, letterSpacing: 2.5, fontWeight: '700' }}>CARGA INTELIGENTE</Text>
     </View>
   );
 }
@@ -133,6 +126,7 @@ export default function App() {
 
   // Restore session
   useEffect(() => {
+    const startedAt = Date.now();
     (async () => {
       try {
         const savedToken = await SecureStore.getItemAsync('token');
@@ -147,7 +141,9 @@ export default function App() {
         await SecureStore.deleteItemAsync('token');
         await SecureStore.deleteItemAsync('user');
       } finally {
-        setBooting(false);
+        // Splash mínimo ~1.5 s para que se vea el logo crecer (aunque la sesión cargue al instante)
+        const elapsed = Date.now() - startedAt;
+        setTimeout(() => setBooting(false), Math.max(0, 1500 - elapsed));
       }
     })();
   }, []);
