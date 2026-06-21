@@ -8,7 +8,7 @@
     <!-- Linterna -->
     <rect x="51.5" y="48" width="17" height="9" fill="#b45309"/>
     <!-- Techo -->
-    <path d="M60 33 L72 48 L48 48 Z" fill="#2b2520" stroke="#2b2520" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M60 36 L70 48 L50 48 Z" fill="#2b2520" stroke="#2b2520" stroke-width="2.5" stroke-linejoin="round"/>
     <!-- Torre -->
     <path d="M54 57 L66 57 L71 99 L49 99 Z" fill="#2b2520"/>
     <!-- Rayo calado -->
