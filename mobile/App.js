@@ -696,11 +696,12 @@ export default function App() {
         && Math.abs(lng - mapRegion.longitude) <= mapRegion.longitudeDelta * 0.75;
   }, [mapRegion]);
 
-  // Tap en un faro (mapa): háptica sutil + leve vuelo de cámara + panel compacto
-  // (no el sheet oscuro, así el mapa sigue visible y se ve el vuelo de cámara).
+  // Tap en un faro (mapa): háptica + vuelo de cámara + abre el sheet (confiable; el
+  // onPress del mapa limpia selectedCharger, pero NO chargerPanel → el panel no se
+  // cierra solo). selectedCharger queda solo para resaltar el pin.
   const tapCharger = (c) => {
     Haptics.selectionAsync().catch(() => {});
-    setSelectedCharger(c); setMapSearch('');
+    setSelectedCharger(c); setChargerPanel(c); setMapSearch('');
     if (c.lat != null && c.lng != null) {
       mapRef.current?.animateCamera({ center: { latitude: c.lat, longitude: c.lng } }, { duration: 350 });
     }
@@ -2152,7 +2153,7 @@ export default function App() {
       )}
 
       {/* ── Panel flotante del mapa — nivel raíz para capturar toques correctamente ── */}
-      {tab === 'mapa' && selectedCharger && (() => {
+      {tab === 'mapa' && selectedCharger && !chargerPanel && (() => {
         const c        = chargers.find(x => x.id === selectedCharger.id) || selectedCharger;
         const color    = STATUS_COLOR[c.status] || T.offline;
         const mine     = isOwner && c.owner_id === user?.id;
@@ -2483,9 +2484,9 @@ export default function App() {
         const close    = () => { setChargerPanel(null); setSelectedCharger(null); };
 
         return (
-          <View style={styles.modalOverlay}>
+          <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.28)' }]}>
             <TouchableOpacity style={{ flex: 1 }} onPress={close} activeOpacity={1} />
-            <View style={styles.modal}>
+            <SlideUp style={styles.modal}>
               <View style={styles.mapPanelHandle} />
 
               {/* Header */}
@@ -2649,7 +2650,7 @@ export default function App() {
                   )}
                 </View>
               )}
-            </View>
+            </SlideUp>
           </View>
         );
       })()}
