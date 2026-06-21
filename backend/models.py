@@ -141,6 +141,10 @@ class Charger(Base):
     session_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     current_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     meter_start: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Live de la sesión en curso (de los MeterValues): potencia y % de batería (SoC,
+    # solo si el cargador/carro lo reportan — típico en DC, casi nunca en AC).
+    current_power_kw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_soc: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Calificación discreta: contadores 👍/👎 (denormalizados para leer barato)
     rating_up: Mapped[int] = mapped_column(Integer, default=0)
     rating_down: Mapped[int] = mapped_column(Integer, default=0)
@@ -186,6 +190,8 @@ class Charger(Base):
                 "session_user": self.session_user,
                 "session_started_at": self.session_started_at.isoformat() if self.session_started_at else None,
                 "current_kwh": self.current_kwh,
+                "current_power_kw": self.current_power_kw,
+                "current_soc": self.current_soc,
             })
         return d
 

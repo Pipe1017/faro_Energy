@@ -167,6 +167,8 @@ class ChargePoint(cp):
                 charger.meter_start = meter_start
                 charger.session_started_at = datetime.now(timezone.utc)
                 charger.current_kwh = 0.0   # resetear al iniciar sesión nueva
+                charger.current_power_kw = None
+                charger.current_soc = None
                 _wallet_stop_sent.discard(self.id)
                 _session_progress.pop(self.id, None)
                 _notify_owner(db, charger.owner_id, "SESSION_STARTED",
@@ -186,12 +188,36 @@ class ChargePoint(cp):
                 logger.warning(f"[{self.id}] MeterValues sin sampledValue: {reading}")
                 return call_result.MeterValuesPayload()
 
-            wh = float(samples[0]["value"])
+            # Parsear por measurand (no asumir el orden de los samples)
+            def _find(measurand):
+                for s in samples:
+                    if (s.get("measurand") or "Energy.Active.Import.Register") == measurand:
+                        return s
+                return None
+            es = _find("Energy.Active.Import.Register") or samples[0]
+            wh = float(es["value"])
+            # Potencia (kW): puede venir en W o kW según el cargador
+            ps = _find("Power.Active.Import")
+            power_kw = None
+            if ps:
+                try:
+                    pv = float(ps["value"]); pu = (ps.get("unit") or "").lower()
+                    power_kw = round(pv / 1000, 1) if pu == "w" else round(pv, 1)
+                except Exception: pass
+            # SoC (% batería): solo si el cargador/carro lo reportan
+            ss = _find("SoC")
+            soc = None
+            if ss:
+                try: soc = round(float(ss["value"]))
+                except Exception: pass
+
             async with AsyncSessionLocal() as db:
                 charger = await db.get(Charger, self.id)
                 if charger and charger.meter_start is not None:
                     session_kwh = round((wh - charger.meter_start) / 1000, 3)
                     charger.current_kwh = max(0.0, session_kwh)
+                    if power_kw is not None: charger.current_power_kw = power_kw
+                    if soc is not None:      charger.current_soc = soc
                     await db.commit()
                     logger.info(f"[{self.id}] MeterValues: {wh:.0f}Wh → {charger.current_kwh:.3f} kWh")
                     # OJO: el corte por saldo NO se hace aquí. Enviar un RemoteStop
@@ -361,6 +387,8 @@ async def _finalize_session(db: AsyncSession, charger: Charger, kwh: float, fina
     charger.session_started_at = None
     charger.current_kwh = None
     charger.meter_start = None
+    charger.current_power_kw = None
+    charger.current_soc = None
     _wallet_stop_sent.discard(charger.id)
     _session_progress.pop(charger.id, None)
     logger.info(f"[{charger.id}] {kwh:.3f}kWh · ingreso:{m['revenue']} · luz:{m['elec_cost']} · neto:{m['net_profit']} COP")

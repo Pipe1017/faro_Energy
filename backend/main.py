@@ -80,6 +80,8 @@ async def startup():
         ("ALTER TABLE users ADD COLUMN terms_version TEXT",                                           "terms_version en users"),
         ("ALTER TABLE users ADD COLUMN reset_token TEXT",                                             "reset_token en users"),
         ("ALTER TABLE users ADD COLUMN reset_expires TIMESTAMP",                                      "reset_expires en users"),
+        ("ALTER TABLE chargers ADD COLUMN current_power_kw FLOAT",                                    "current_power_kw en chargers"),
+        ("ALTER TABLE chargers ADD COLUMN current_soc FLOAT",                                         "current_soc en chargers"),
     ]:
         try:
             async with engine.begin() as conn:

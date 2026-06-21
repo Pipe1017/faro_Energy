@@ -2231,8 +2231,42 @@ export default function App() {
               <View style={styles.sessionStatSep} />
               <View style={styles.sessionStat}><Text style={styles.sessionStatVal}>{formatElapsed(elapsed)}</Text><Text style={styles.sessionStatLbl}>Tiempo</Text></View>
               <View style={styles.sessionStatSep} />
-              <View style={styles.sessionStat}><Text style={styles.sessionStatVal}>{liveCharger?.power_kw || '—'} kW</Text><Text style={styles.sessionStatLbl}>Potencia</Text></View>
+              <View style={styles.sessionStat}><Text style={styles.sessionStatVal}>{(liveCharger?.current_power_kw ?? liveCharger?.power_kw) || '—'} kW</Text><Text style={styles.sessionStatLbl}>Potencia</Text></View>
             </View>
+
+            {/* Extras en vivo: batería (si el cargador la reporta), km y saldo */}
+            {(() => {
+              const power  = liveCharger?.current_power_kw ?? liveCharger?.power_kw ?? 0;
+              const kmAdded = Math.round(sessionKwh * 5);
+              const saldo  = wallet?.balance_cop ?? 0;
+              const maxKwh = sessionPrice > 0 ? saldo / sessionPrice : 0;
+              const restKwh = Math.max(0, maxKwh - sessionKwh);
+              const restMin = power > 0 ? Math.round(restKwh / power * 60) : null;
+              return (
+                <View style={{ backgroundColor: T.surface, borderRadius: 12, padding: 12, marginTop: 12, borderWidth: 1, borderColor: T.cardBorder, gap: 8 }}>
+                  {liveCharger?.current_soc != null && (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: T.textSec, fontSize: 13 }}>Batería del carro</Text>
+                      <Text style={{ color: T.textPri, fontSize: 14, fontWeight: '800' }}>{liveCharger.current_soc}%</Text>
+                    </View>
+                  )}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ color: T.textSec, fontSize: 13 }}>Autonomía cargada (aprox.)</Text>
+                    <Text style={{ color: T.textPri, fontSize: 13, fontWeight: '700' }}>≈ {kmAdded} km</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ color: T.textSec, fontSize: 13 }}>Tu saldo</Text>
+                    <Text style={{ color: T.green, fontSize: 13, fontWeight: '800' }}>$ {saldo.toLocaleString('es-CO')}</Text>
+                  </View>
+                  {sessionPrice > 0 && (
+                    <Text style={{ color: T.textMuted, fontSize: 11 }}>
+                      Con tu saldo puedes cargar ~{restKwh.toFixed(1)} kWh más{restMin != null ? ` (~${restMin} min)` : ''}. La carga se detiene sola antes de quedarte sin saldo.
+                    </Text>
+                  )}
+                </View>
+              );
+            })()}
+
             {/* Botones al fondo — zona del pulgar */}
             <View style={styles.modalActions}>
               <TouchableOpacity style={[styles.btn, styles.btnStop, { flex: 1 }]} onPress={() => { remoteStop(activeSession.chargerId); setSessionModal(false); }}>
@@ -2308,18 +2342,23 @@ export default function App() {
                 </View>
               )}
 
-              {/* Estimación fácil para quien no sabe de carga */}
+              {/* Estimación fácil para quien no sabe de carga.
+                  Ventana según potencia: lento (<50 kW) → 1 hora; rápido (≥50 kW) → 30 min. */}
               {priceUser && c.power_kw && (() => {
-                const kwhHour  = Math.round(c.power_kw * 0.9 * 10) / 10;   // ~kWh en 1 hora
-                const costHour = Math.round(kwhHour * priceUser);
-                const kmHour   = Math.round(kwhHour * 5);                   // ~5 km por kWh
+                const fast    = c.power_kw >= 50;
+                const mins    = fast ? 30 : 60;
+                const kwh     = Math.round(c.power_kw * 0.9 * (mins / 60) * 10) / 10;
+                const cost    = Math.round(kwh * priceUser);
+                const km      = Math.round(kwh * 5);   // ~5 km por kWh
                 return (
                   <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: T.cardBorder }}>
-                    <Text style={{ color: T.textMuted, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>EN 1 HORA DE CARGA (APROX.)</Text>
+                    <Text style={{ color: T.textMuted, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>
+                      EN {fast ? '30 MIN' : '1 HORA'} DE CARGA (APROX.)
+                    </Text>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>{kwhHour} kWh</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>energía</Text></View>
-                      <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>~{kmHour} km</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>autonomía</Text></View>
-                      <View><Text style={{ color: T.green, fontWeight: '800', fontSize: 16 }}>$ {costHour.toLocaleString('es-CO')}</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>costo aprox.</Text></View>
+                      <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>{kwh} kWh</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>energía</Text></View>
+                      <View><Text style={{ color: T.textPri, fontWeight: '800', fontSize: 16 }}>~{km} km</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>autonomía</Text></View>
+                      <View><Text style={{ color: T.green, fontWeight: '800', fontSize: 16 }}>$ {cost.toLocaleString('es-CO')}</Text><Text style={{ color: T.textMuted, fontSize: 11 }}>costo aprox.</Text></View>
                     </View>
                     <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 6 }}>Aproximado; depende de tu carro y su velocidad de carga.</Text>
                   </View>
