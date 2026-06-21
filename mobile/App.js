@@ -17,20 +17,12 @@ import { MEDELLIN, formatElapsed } from './src/constants';
 import { KbSheet } from './src/hooks';
 import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
 import { FaroLogo } from './src/components/FaroLogo';
-import { ChargerMarker, ExternalMarker, ClusterMarker } from './src/components/ChargerMarker';
+import { ChargerMarker, ExternalMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
 import { styles } from './src/styles';
 
 const IVA_RATE = 0.19;          // IVA Colombia (el conductor paga base × 1.19)
 const PLATFORM_MARGIN = 0.15;   // comisión Faro 15% (sobre la base)
-
-// Carga defensiva de supercluster: si falla (interop/ESM), el mapa cae a pines
-// normales en vez de quedar en pantalla negra.
-let Supercluster = null;
-try {
-  const _sc = require('supercluster');
-  Supercluster = _sc && _sc.default ? _sc.default : _sc;
-} catch (e) { Supercluster = null; }
 
 // Pantalla de inicio: faro con latido + vibración corta. On-brand y rápida.
 function BootSplash() {
@@ -135,7 +127,6 @@ export default function App() {
   const [chargerPanel, setChargerPanel] = useState(null);       // panel de acciones (lista + mapa)
   const [externalChargers, setExternalChargers] = useState([]); // OCM: públicos que aún no son Faro
   const [externalPick, setExternalPick] = useState(null);       // pin externo tocado
-  const [mapRegion, setMapRegion] = useState(MEDELLIN);         // región actual (para clustering)
   const [qrModal, setQrModal]       = useState(null);
   const [qrScanning, setQrScanning] = useState(false);
   const [myUsage, setMyUsage]       = useState(null);
@@ -871,37 +862,6 @@ export default function App() {
       stoppingRef.current = false;
     }
   };
-
-  // ── Clustering del mapa (supercluster) — DEBE ir antes de cualquier return
-  //    condicional (regla de hooks: mismo orden en cada render). ──────────────
-  const clusterIndex = useMemo(() => {
-    if (!Supercluster) return null;
-    try {
-      const pts = [];
-      chargers.forEach(c => {
-        if (c.lat && c.lng) pts.push({ type: 'Feature', properties: { kind: 'faro', id: c.id },
-          geometry: { type: 'Point', coordinates: [c.lng, c.lat] } });
-      });
-      externalChargers.slice(0, 80).forEach(e => {
-        if (e.lat && e.lng) pts.push({ type: 'Feature', properties: { kind: 'ext', id: e.id },
-          geometry: { type: 'Point', coordinates: [e.lng, e.lat] } });
-      });
-      const idx = new Supercluster({ radius: 55, maxZoom: 16 });
-      idx.load(pts);
-      return idx;
-    } catch (e) { return null; }
-  }, [chargers, externalChargers]);
-
-  const clusters = useMemo(() => {
-    const r = mapRegion;
-    if (!clusterIndex || !r || !r.longitudeDelta) return null;
-    try {
-      const bbox = [r.longitude - r.longitudeDelta / 2, r.latitude - r.latitudeDelta / 2,
-                    r.longitude + r.longitudeDelta / 2, r.latitude + r.latitudeDelta / 2];
-      const zoom = Math.round(Math.log2(360 / Math.max(r.longitudeDelta, 0.0005)));
-      return clusterIndex.getClusters(bbox, Math.min(20, Math.max(1, zoom)));
-    } catch (e) { return null; }
-  }, [clusterIndex, mapRegion]);
 
   if (booting) {
     return <BootSplash />;
@@ -1950,53 +1910,22 @@ export default function App() {
             showsMyLocationButton={false}
             onPress={() => { Keyboard.dismiss(); setSelectedCharger(null); setMapSearch(''); setGeoResults([]); }}
             onRegionChangeComplete={r => {
-              setMapRegion(r);   // recalcula los clusters según la vista
               if (r.latitudeDelta > 0.07) setZoom('far');
               else if (r.latitudeDelta > 0.025) setZoom('mid');
               else setZoom('close');
             }}
           >
-            {/* Clustering: agrupa pines al alejar y los separa al acercar. Si el
-                clustering no está disponible (clusters === null), cae a pines normales. */}
-            {clusters ? clusters.map(f => {
-              const [lng, lat] = f.geometry.coordinates;
-              if (f.properties.cluster) {
-                return (
-                  <ClusterMarker key={`cl-${f.properties.cluster_id}`} lat={lat} lng={lng}
-                    count={f.properties.point_count}
-                    onPress={() => {
-                      try {
-                        const z = Math.min(16, clusterIndex.getClusterExpansionZoom(f.properties.cluster_id));
-                        const delta = 360 / Math.pow(2, z);
-                        mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta }, 350);
-                      } catch (e) {}
-                    }} />
-                );
-              }
-              if (f.properties.kind === 'ext') {
-                const e = externalChargers.find(x => x.id === f.properties.id);
-                return e ? <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} /> : null;
-              }
-              const c = chargers.find(x => x.id === f.properties.id);
-              return c ? (
-                <ChargerMarker key={c.id} charger={c}
-                  isSelected={selectedCharger?.id === c.id}
-                  isMine={isOwner && c.owner_id === user?.id}
-                  onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
-              ) : null;
-            }) : (
-              <>
-                {externalChargers.slice(0, 80).map(e => (
-                  <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
-                ))}
-                {chargers.filter(c => c.lat && c.lng).map(c => (
-                  <ChargerMarker key={c.id} charger={c}
-                    isSelected={selectedCharger?.id === c.id}
-                    isMine={isOwner && c.owner_id === user?.id}
-                    onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
-                ))}
-              </>
-            )}
+            {/* Externos (OCM): pastilla negra con potencia, capa de abajo. Siempre
+                renderizados (no se montan/desmontan por zoom) para no tumbar los faros. */}
+            {externalChargers.slice(0, 80).map(e => (
+              <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
+            ))}
+            {chargers.filter(c => c.lat && c.lng).map(c => (
+              <ChargerMarker key={c.id} charger={c}
+                isSelected={selectedCharger?.id === c.id}
+                isMine={isOwner && c.owner_id === user?.id}
+                onPress={() => { setSelectedCharger(c); setChargerPanel(c); setMapSearch(''); }} />
+            ))}
           </MapView>
 
           {/* Crédito Open Charge Map (requerido por su licencia) */}
