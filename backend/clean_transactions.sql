@@ -31,7 +31,7 @@ TRUNCATE
 -- (se conservan los cargadores y su configuración: precio, potencia, ubicación...).
 UPDATE chargers SET
     active_transaction = NULL,
-    session_user       = NULL,
+    "session_user"     = NULL,   -- entre comillas: session_user es palabra reservada en Postgres
     session_started_at = NULL,
     current_kwh        = NULL,
     meter_start        = NULL,
