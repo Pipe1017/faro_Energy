@@ -67,12 +67,12 @@ async function icon(IC, color = "#FFFFFF", size = 256) {
   // Símbolo solo (la linterna-faro), para la marca discreta de esquina en las demás
   // slides. Mismas formas del logo oficial, recortadas a su viewBox.
   const symSvg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 10 56 100">
-       <path d="M48 16 L62 30 L34 30 Z" fill="#2b2520"/>
-       <path d="M35 30 L61 30 L62 40 L34 40 Z" fill="#b45309"/>
-       <path d="M34 40 L62 40 L66 96 L30 96 Z" fill="#2b2520"/>
-       <path d="M51 46 L42 68 L48 68 L45 88 L57 64 L51 64 Z" fill="#faf7f1"/>
-       <rect x="27" y="95" width="42" height="7" rx="2" fill="#b45309"/>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 32 40 74">
+       <rect x="51.5" y="48" width="17" height="9" fill="#b45309"/>
+       <path d="M60 33 L72 48 L48 48 Z" fill="#2b2520"/>
+       <path d="M54 57 L66 57 L71 99 L49 99 Z" fill="#2b2520"/>
+       <path d="M61 64 L55 80 L59.5 80 L57 92 L66 74 L61 74 Z" fill="#faf7f1"/>
+       <rect x="45" y="99" width="30" height="5" fill="#b45309"/>
      </svg>`);
   const symPng = "image/png;base64," + (await sharp(symSvg, { density: 600 }).resize({ width: 400 }).png().toBuffer()).toString("base64");
   const SYM_AR = 40 / 74; // ancho/alto del símbolo
