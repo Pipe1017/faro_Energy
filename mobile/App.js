@@ -141,9 +141,10 @@ export default function App() {
         await SecureStore.deleteItemAsync('token');
         await SecureStore.deleteItemAsync('user');
       } finally {
-        // Splash mínimo ~1.5 s para que se vea el logo crecer (aunque la sesión cargue al instante)
+        // Splash ~3 s: ~1.5 s creciendo el logo + ~1.5 s quieto para que todo
+        // (logo, caché, datos) termine de cargar antes de entrar.
         const elapsed = Date.now() - startedAt;
-        setTimeout(() => setBooting(false), Math.max(0, 1500 - elapsed));
+        setTimeout(() => setBooting(false), Math.max(0, 3000 - elapsed));
       }
     })();
   }, []);
