@@ -21,6 +21,9 @@ import { ChargerMarker, ExternalMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
 import { styles } from './src/styles';
 
+const IVA_RATE = 0.19;          // IVA Colombia (el conductor paga base × 1.19)
+const PLATFORM_MARGIN = 0.15;   // comisión Faro 15% (sobre la base)
+
 export default function App() {
   const [token, setToken]       = useState(null);
   const [user, setUser]         = useState(null);
@@ -848,17 +851,20 @@ export default function App() {
 
 
   const savePrice = async (chargerId) => {
-    const price = parseFloat(newPrice.replace(/\./g, '').replace(',', '.'));
-    if (!price || price <= 0) { Alert.alert('Error', 'Ingresa un precio válido'); return; }
+    // El dueño escribe el PRECIO FINAL (lo que paga el conductor, IVA incl.).
+    // Guardamos la base = final / 1.19 (el backend luego le suma el IVA y queda igual).
+    const final = parseFloat(newPrice.replace(/\./g, '').replace(',', '.'));
+    if (!final || final <= 0) { Alert.alert('Error', 'Ingresa un precio válido'); return; }
+    const base = Math.round(final / (1 + IVA_RATE));
     try {
       await apiFetch(`/chargers/${chargerId}/price`, {
         method: 'PATCH',
-        body: JSON.stringify({ price_per_kwh: price }),
+        body: JSON.stringify({ price_per_kwh: base }),
       }, token);
       setEditingPrice(null);
       setNewPrice('');
       fetchStatus();
-      Alert.alert('Listo', `Precio actualizado a $${price.toLocaleString('es-CO')}/kWh`);
+      Alert.alert('Listo', `El conductor pagará $${final.toLocaleString('es-CO')}/kWh (IVA incluido).`);
     } catch (e) {
       Alert.alert('Error', e.message);
     }
@@ -950,31 +956,63 @@ export default function App() {
           </View>
         )}
 
-        {/* Precio al conductor */}
-        {isEditing ? (
-          <View style={styles.priceEditor}>
-            <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
-              keyboardType="numeric" placeholder="Ej: 1100" placeholderTextColor="#94866f" autoFocus />
-            <Text style={styles.priceUnit}>COP/kWh</Text>
-            <TouchableOpacity style={styles.priceSave} onPress={() => savePrice(item.id)}>
-              <Feather name="check" size={18} color="#fdfbf7" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
-              <Text style={styles.priceCancelText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.priceRow} onPress={() => {
-            if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
-            setEditingPrice(item.id); setNewPrice(String(item.price_per_kwh || '')); }}>
-            <View>
-              <Text style={styles.priceLabel}>Precio al conductor</Text>
-              <Text style={styles.priceValue}>$ {(item.price_per_kwh || 0).toLocaleString('es-CO')} / kWh</Text>
-              <Text style={styles.priceUserNote}>Conductor paga: $ {Math.round((item.price_per_kwh || 0) * 1.19).toLocaleString('es-CO')} / kWh (IVA incl.)</Text>
-            </View>
-            <Feather name="edit-2" size={14} color={T.green} />
-          </TouchableOpacity>
-        )}
+        {/* Precio FINAL al conductor (IVA incluido) + desglose */}
+        {(() => {
+          const base       = item.price_per_kwh || 0;
+          const finalP     = Math.round(base * (1 + IVA_RATE));            // lo que paga el conductor
+          const iva        = finalP - base;                                // IVA a la DIAN
+          const commission = Math.round(base * PLATFORM_MARGIN * (1 + IVA_RATE)); // comisión Faro + su IVA
+          const energy     = item.cost_per_kwh || 0;                       // tu costo de electricidad
+          const net        = Math.round(base - base * PLATFORM_MARGIN * (1 + IVA_RATE) - energy);
+          if (isEditing) {
+            return (
+              <View style={styles.priceEditor}>
+                <TextInput style={styles.priceInput} value={newPrice} onChangeText={setNewPrice}
+                  keyboardType="numeric" placeholder="Precio final, ej: 1500" placeholderTextColor="#94866f" autoFocus />
+                <Text style={styles.priceUnit}>COP/kWh</Text>
+                <TouchableOpacity style={styles.priceSave} onPress={() => savePrice(item.id)}>
+                  <Feather name="check" size={18} color="#fdfbf7" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.priceCancel} onPress={() => setEditingPrice(null)}>
+                  <Text style={styles.priceCancelText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }
+          return (
+            <>
+              <TouchableOpacity style={styles.priceRow} onPress={() => {
+                if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
+                setEditingPrice(item.id); setNewPrice(String(finalP || '')); }}>
+                <View>
+                  <Text style={styles.priceLabel}>Precio final al conductor (IVA incl.)</Text>
+                  <Text style={styles.priceValue}>$ {finalP.toLocaleString('es-CO')} / kWh</Text>
+                </View>
+                <Feather name="edit-2" size={14} color={T.green} />
+              </TouchableOpacity>
+              {/* Desglose: de cada $final, a dónde va */}
+              <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, marginTop: 6, borderWidth: 1, borderColor: T.cardBorder }}>
+                <Text style={{ color: T.textMuted, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 }}>
+                  DE CADA $ {finalP.toLocaleString('es-CO')} / kWh
+                </Text>
+                {[
+                  ['IVA (a la DIAN)', `− $ ${iva.toLocaleString('es-CO')}`],
+                  ['Comisión Faro (15% + IVA)', `− $ ${commission.toLocaleString('es-CO')}`],
+                  [energy > 0 ? 'Tu energía (costo)' : 'Tu energía — defínela abajo', energy > 0 ? `− $ ${energy.toLocaleString('es-CO')}` : '—'],
+                ].map(([l, v]) => (
+                  <View key={l} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
+                    <Text style={{ color: T.textSec, fontSize: 12 }}>{l}</Text>
+                    <Text style={{ color: T.textPri, fontSize: 12 }}>{v}</Text>
+                  </View>
+                ))}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 6, marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }}>
+                  <Text style={{ color: T.green, fontSize: 13, fontWeight: '800' }}>Tu ganancia / kWh{energy > 0 ? '' : ' (antes de energía)'}</Text>
+                  <Text style={{ color: T.green, fontSize: 13, fontWeight: '800' }}>≈ $ {net.toLocaleString('es-CO')}</Text>
+                </View>
+              </View>
+            </>
+          );
+        })()}
 
         {/* Tarifa pico (6–10 pm) */}
         {editingPrice === `peak_${item.id}` ? (
@@ -983,10 +1021,12 @@ export default function App() {
               keyboardType="numeric" placeholder="Vacío = quitar" placeholderTextColor={T.textMuted} autoFocus />
             <Text style={styles.priceUnit}>COP/kWh</Text>
             <TouchableOpacity style={styles.priceSave} onPress={async () => {
-              const peak = parseFloat(newPrice);
+              // El dueño escribe el precio pico FINAL (IVA incl.) → guardamos la base.
+              const peakFinal = parseFloat(newPrice);
+              const peakBase = peakFinal > 0 ? Math.round(peakFinal / (1 + IVA_RATE)) : null;
               try {
                 await apiFetch(`/chargers/${item.id}/peak-price`, { method: 'PATCH',
-                  body: JSON.stringify({ peak_price_per_kwh: peak > 0 ? peak : null }) }, token);
+                  body: JSON.stringify({ peak_price_per_kwh: peakBase }) }, token);
                 setEditingPrice(null); fetchStatus();
               } catch (e) { Alert.alert('Error', e.message); }
             }}>
@@ -1000,11 +1040,11 @@ export default function App() {
           <TouchableOpacity style={[styles.priceRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }]}
             onPress={() => {
               if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
-              setEditingPrice(`peak_${item.id}`); setNewPrice(String(item.peak_price_per_kwh || '')); }}>
+              setEditingPrice(`peak_${item.id}`); setNewPrice(String(item.peak_price_per_kwh ? Math.round(item.peak_price_per_kwh * (1 + IVA_RATE)) : '')); }}>
             <View>
-              <Text style={styles.priceLabel}>Tarifa pico (6–10 pm)</Text>
+              <Text style={styles.priceLabel}>Tarifa pico (6–10 pm) — final IVA incl.</Text>
               <Text style={[styles.priceValue, !item.peak_price_per_kwh && { color: T.textMuted, fontSize: 13 }]}>
-                {item.peak_price_per_kwh ? `$ ${item.peak_price_per_kwh.toLocaleString('es-CO')} / kWh` : 'Sin tarifa pico'}
+                {item.peak_price_per_kwh ? `$ ${Math.round(item.peak_price_per_kwh * (1 + IVA_RATE)).toLocaleString('es-CO')} / kWh` : 'Sin tarifa pico'}
               </Text>
             </View>
             <Feather name="edit-2" size={14} color={item.peak_price_per_kwh ? T.green : T.textMuted} />
