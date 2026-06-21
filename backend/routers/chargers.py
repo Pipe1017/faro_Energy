@@ -165,6 +165,55 @@ async def add_charger(
     return {**charger.to_dict(), "ocpp_url": ocpp_url(charger_id)}
 
 
+class EditChargerBody(BaseModel):
+    location: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    power_kw: float | None = None
+    connector_type: str | None = None
+    price_per_kwh: float | None = None
+    peak_price_per_kwh: float | None = None   # None NO lo quita; usar clear_peak
+    clear_peak: bool = False                   # True = quitar tarifa pico
+    cost_per_kwh: float | None = None
+
+
+@router.patch("/chargers/{charge_point_id}")
+async def edit_charger(charge_point_id: str, body: EditChargerBody,
+                       current_user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_db)):
+    """Edición unificada del cargador (un solo formulario para todo). Solo el dueño.
+    No deja cambiar precio/pico mientras un conductor está cargando."""
+    charger = await db.get(Charger, charge_point_id)
+    if not charger:
+        raise HTTPException(404, "Cargador no encontrado")
+    if charger.owner_id != current_user.id:
+        raise HTTPException(403, "No es tu cargador")
+
+    changes_price = body.price_per_kwh is not None or body.peak_price_per_kwh is not None or body.clear_peak
+    if changes_price and charger.active_transaction:
+        raise HTTPException(409, "No puedes cambiar el precio mientras un conductor está cargando")
+
+    if body.location is not None:       charger.location = body.location.strip()
+    if body.lat is not None:            charger.lat = body.lat
+    if body.lng is not None:            charger.lng = body.lng
+    if body.power_kw is not None:       charger.power_kw = body.power_kw
+    if body.connector_type is not None: charger.connector_type = body.connector_type
+    if body.cost_per_kwh is not None:   charger.cost_per_kwh = body.cost_per_kwh
+    if body.price_per_kwh is not None:
+        if body.price_per_kwh <= 0:
+            raise HTTPException(400, "El precio debe ser mayor a 0")
+        charger.price_per_kwh = body.price_per_kwh
+    if body.clear_peak:
+        charger.peak_price_per_kwh = None
+    elif body.peak_price_per_kwh is not None:
+        if body.peak_price_per_kwh <= 0:
+            raise HTTPException(400, "El precio pico debe ser mayor a 0")
+        charger.peak_price_per_kwh = body.peak_price_per_kwh
+
+    await db.commit()
+    return charger.to_dict()
+
+
 @router.get("/brand-profiles")
 async def list_brand_profiles(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ChargerBrandProfile).order_by(ChargerBrandProfile.display_name))

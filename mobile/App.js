@@ -68,7 +68,8 @@ export default function App() {
   const [myDisburses, setMyDisburses]     = useState(null);
   const [addChargerModal, setAddChargerModal] = useState(false);
   const [chargerForm, setChargerForm]     = useState({
-    location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2', price_per_kwh: '', cost_per_kwh: '', brand_profile_id: null,
+    id: null, location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2',
+    price_per_kwh: '', peak_per_kwh: '', cost_per_kwh: '', brand_profile_id: null,
   });
   const [brandProfiles, setBrandProfiles] = useState([]);
   const [statsPeriod, setStatsPeriod]     = useState('week');   // today | week | month
@@ -637,32 +638,61 @@ export default function App() {
 
   // ── Gestión de cargadores (dueño) ──────────────────────────────────────────
 
-  const addCharger = async () => {
-    const { location, lat, lng, power_kw, connector_type, price_per_kwh, cost_per_kwh, brand_profile_id } = chargerForm;
-    if (!location.trim() || !lat || !lng || !power_kw || !price_per_kwh) {
+  // Abre el modal unificado para AGREGAR (en blanco, costo por defecto)
+  const openNewCharger = () => {
+    setChargerForm({ id: null, location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2',
+      price_per_kwh: '', peak_per_kwh: '', cost_per_kwh: '800', brand_profile_id: null });
+    setAddChargerModal(true);
+  };
+  // Abre el MISMO modal para EDITAR (precios mostrados como FINAL, IVA incl.)
+  const openEditCharger = (c) => {
+    setChargerForm({
+      id: c.id, location: c.location || '', lat: String(c.lat ?? ''), lng: String(c.lng ?? ''),
+      power_kw: String(c.power_kw ?? ''), connector_type: c.connector_type || 'Type 2',
+      price_per_kwh: String(c.price_per_kwh ? Math.round(c.price_per_kwh * (1 + IVA_RATE)) : ''),
+      peak_per_kwh: String(c.peak_price_per_kwh ? Math.round(c.peak_price_per_kwh * (1 + IVA_RATE)) : ''),
+      cost_per_kwh: String(c.cost_per_kwh ?? ''), brand_profile_id: c.brand_profile_id || null,
+    });
+    setAddChargerModal(true);
+  };
+
+  // Guarda: crea (POST) o edita (PATCH). El precio/pico que escribe el dueño es FINAL
+  // (IVA incl.) → se convierte a base (/1.19) antes de enviar.
+  const saveCharger = async () => {
+    const f = chargerForm;
+    const finalPrice = parseFloat(String(f.price_per_kwh).replace(/\./g, '').replace(',', '.'));
+    if (!f.location.trim() || !f.lat || !f.lng || !f.power_kw || !finalPrice) {
       Alert.alert('Campos incompletos', 'Completa ubicación, coordenadas, potencia y precio.'); return;
     }
+    const base     = Math.round(finalPrice / (1 + IVA_RATE));
+    const peakFin  = parseFloat(String(f.peak_per_kwh).replace(/\./g, '').replace(',', '.'));
+    const peakBase = peakFin > 0 ? Math.round(peakFin / (1 + IVA_RATE)) : null;
+    const cost     = parseFloat(String(f.cost_per_kwh).replace(/\./g, '').replace(',', '.')) || 0;
     try {
-      const data = await apiFetch('/chargers', {
-        method: 'POST',
-        body: JSON.stringify({
-          location: location.trim(),
-          lat: parseFloat(lat), lng: parseFloat(lng),
-          power_kw: parseFloat(power_kw),
-          connector_type,
-          price_per_kwh: parseFloat(price_per_kwh),
-          cost_per_kwh: parseFloat(cost_per_kwh) || 0,
-          brand_profile_id,
-        }),
-      }, token);
-      setAddChargerModal(false);
-      setChargerForm({ location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2', price_per_kwh: '', cost_per_kwh: '', brand_profile_id: null });
-      fetchStatus();
-      Alert.alert(
-        '¡Cargador registrado!',
-        `Tu ID asignado:\n${data.id}\n\nConfigura tu equipo con esta URL OCPP:\n${data.ocpp_url}\n\n(El simulador ya quedó corriendo para que pruebes el flujo completo desde ya.)`,
-        [{ text: 'Entendido' }]
-      );
+      if (f.id) {
+        await apiFetch(`/chargers/${f.id}`, { method: 'PATCH', body: JSON.stringify({
+          location: f.location.trim(), lat: parseFloat(f.lat), lng: parseFloat(f.lng),
+          power_kw: parseFloat(f.power_kw), connector_type: f.connector_type,
+          price_per_kwh: base, cost_per_kwh: cost,
+          peak_price_per_kwh: peakBase, clear_peak: peakBase === null,
+        }) }, token);
+        setAddChargerModal(false); fetchStatus();
+        Alert.alert('Guardado', `El conductor pagará $${finalPrice.toLocaleString('es-CO')}/kWh (IVA incl.).`);
+      } else {
+        const data = await apiFetch('/chargers', { method: 'POST', body: JSON.stringify({
+          location: f.location.trim(), lat: parseFloat(f.lat), lng: parseFloat(f.lng),
+          power_kw: parseFloat(f.power_kw), connector_type: f.connector_type,
+          price_per_kwh: base, cost_per_kwh: cost, brand_profile_id: f.brand_profile_id,
+        }) }, token);
+        // tarifa pico opcional al crear
+        if (peakBase) {
+          try { await apiFetch(`/chargers/${data.id}/peak-price`, { method: 'PATCH', body: JSON.stringify({ peak_price_per_kwh: peakBase }) }, token); } catch {}
+        }
+        setAddChargerModal(false); fetchStatus();
+        Alert.alert('¡Cargador registrado!',
+          `Tu ID:\n${data.id}\n\nURL OCPP para tu equipo:\n${data.ocpp_url}\n\n(El simulador ya quedó corriendo para probar.)`,
+          [{ text: 'Entendido' }]);
+      }
     } catch (e) { Alert.alert('Error', e.message); }
   };
 
@@ -983,7 +1013,7 @@ export default function App() {
             <>
               <TouchableOpacity style={styles.priceRow} onPress={() => {
                 if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
-                setEditingPrice(item.id); setNewPrice(String(finalP || '')); }}>
+                openEditCharger(item); }}>
                 <View>
                   <Text style={styles.priceLabel}>Precio final al conductor (IVA incl.)</Text>
                   <Text style={styles.priceValue}>$ {finalP.toLocaleString('es-CO')} / kWh</Text>
@@ -1040,7 +1070,7 @@ export default function App() {
           <TouchableOpacity style={[styles.priceRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }]}
             onPress={() => {
               if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
-              setEditingPrice(`peak_${item.id}`); setNewPrice(String(item.peak_price_per_kwh ? Math.round(item.peak_price_per_kwh * (1 + IVA_RATE)) : '')); }}>
+              openEditCharger(item); }}>
             <View>
               <Text style={styles.priceLabel}>Tarifa pico (6–10 pm) — final IVA incl.</Text>
               <Text style={[styles.priceValue, !item.peak_price_per_kwh && { color: T.textMuted, fontSize: 13 }]}>
@@ -1071,7 +1101,7 @@ export default function App() {
           </View>
         ) : (
           <TouchableOpacity style={[styles.priceRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }]}
-            onPress={() => { setEditingPrice(`cost_${item.id}`); setNewPrice(String(item.cost_per_kwh || '')); }}>
+            onPress={() => openEditCharger(item)}>
             <View>
               <Text style={styles.priceLabel}>Mi costo de electricidad</Text>
               <Text style={[styles.priceValue, { fontSize: 13 }]}>$ {(item.cost_per_kwh || 0).toLocaleString('es-CO')} / kWh</Text>
@@ -1356,7 +1386,7 @@ export default function App() {
               <Text style={styles.sectionTitle}>Mis cargadores</Text>
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.greenFaint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: T.greenDark }}
-                onPress={() => setAddChargerModal(true)}>
+                onPress={openNewCharger}>
                 <Feather name="plus" size={13} color={T.green} />
                 <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Agregar</Text>
               </TouchableOpacity>
@@ -2618,8 +2648,8 @@ export default function App() {
           <KbSheet>
             <ScrollView contentContainerStyle={styles.modal} keyboardShouldPersistTaps="handled">
               <View style={styles.mapPanelHandle} />
-              <Text style={styles.modalTitle}>Registrar cargador</Text>
-              <Text style={styles.mapPanelLocation}>Te asignaremos un ID único (FARO-XXXX) y la URL para configurar tu equipo.</Text>
+              <Text style={styles.modalTitle}>{chargerForm.id ? `Editar ${chargerForm.id}` : 'Registrar cargador'}</Text>
+              <Text style={styles.mapPanelLocation}>{chargerForm.id ? 'Edita los datos y el precio de tu cargador.' : 'Te asignaremos un ID único (FARO-XXXX) y la URL para configurar tu equipo.'}</Text>
 
               <View style={{ gap: 10, marginTop: 16 }}>
                 {/* Marca del cargador */}
@@ -2700,27 +2730,59 @@ export default function App() {
                   ))}
                 </View>
 
-                {/* Precios */}
+                {/* Precio FINAL (lo que paga el conductor, IVA incl.) */}
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Precio base (COP/kWh) *</Text>
-                    <TextInput style={styles.input} placeholder="1100" placeholderTextColor={T.textMuted}
+                    <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Precio al conductor (IVA incl.) *</Text>
+                    <TextInput style={styles.input} placeholder="1500" placeholderTextColor={T.textMuted}
                       value={chargerForm.price_per_kwh} onChangeText={v => setChargerForm(f=>({...f, price_per_kwh: v}))}
                       keyboardType="number-pad" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Costo electricidad</Text>
-                    <TextInput style={styles.input} placeholder="650" placeholderTextColor={T.textMuted}
+                    <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Tu costo de energía</Text>
+                    <TextInput style={styles.input} placeholder="800" placeholderTextColor={T.textMuted}
                       value={chargerForm.cost_per_kwh} onChangeText={v => setChargerForm(f=>({...f, cost_per_kwh: v}))}
                       keyboardType="number-pad" />
                   </View>
                 </View>
+                <View>
+                  <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Tarifa pico 6–10 pm (opcional, IVA incl.)</Text>
+                  <TextInput style={styles.input} placeholder="Vacío = sin pico" placeholderTextColor={T.textMuted}
+                    value={chargerForm.peak_per_kwh} onChangeText={v => setChargerForm(f=>({...f, peak_per_kwh: v}))}
+                    keyboardType="number-pad" />
+                </View>
+
+                {/* Desglose en vivo de lo que ganas */}
+                {(() => {
+                  const finalP = parseFloat(String(chargerForm.price_per_kwh).replace(/\./g, '').replace(',', '.')) || 0;
+                  if (finalP <= 0) return null;
+                  const base = Math.round(finalP / (1 + IVA_RATE));
+                  const iva = finalP - base;
+                  const commission = Math.round(base * PLATFORM_MARGIN * (1 + IVA_RATE));
+                  const energy = parseFloat(String(chargerForm.cost_per_kwh).replace(/\./g, '').replace(',', '.')) || 0;
+                  const net = Math.round(base - base * PLATFORM_MARGIN * (1 + IVA_RATE) - energy);
+                  return (
+                    <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: T.cardBorder }}>
+                      <Text style={{ color: T.textMuted, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 }}>DE CADA $ {finalP.toLocaleString('es-CO')} / kWh</Text>
+                      {[['IVA (a la DIAN)', iva], ['Comisión Faro (15% + IVA)', commission], [energy > 0 ? 'Tu energía' : 'Tu energía (sin definir)', energy]].map(([l, v]) => (
+                        <View key={l} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
+                          <Text style={{ color: T.textSec, fontSize: 12 }}>{l}</Text>
+                          <Text style={{ color: T.textPri, fontSize: 12 }}>{v > 0 ? `− $ ${v.toLocaleString('es-CO')}` : '—'}</Text>
+                        </View>
+                      ))}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 6, marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }}>
+                        <Text style={{ color: T.green, fontSize: 13, fontWeight: '800' }}>Tu ganancia / kWh{energy > 0 ? '' : ' (antes de energía)'}</Text>
+                        <Text style={{ color: T.green, fontSize: 13, fontWeight: '800' }}>≈ $ {net.toLocaleString('es-CO')}</Text>
+                      </View>
+                    </View>
+                  );
+                })()}
               </View>
 
               <View style={styles.modalActions}>
-                <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={addCharger}>
-                  <Feather name="plus" size={16} color="#fdfbf7" />
-                  <Text style={styles.btnText}>Registrar cargador</Text>
+                <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 1 }]} onPress={saveCharger}>
+                  <Feather name={chargerForm.id ? 'check' : 'plus'} size={16} color="#fdfbf7" />
+                  <Text style={styles.btnText}>{chargerForm.id ? 'Guardar cambios' : 'Registrar cargador'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btnSecondary, { flex: 0.5 }]} onPress={() => setAddChargerModal(false)}>
                   <Text style={[styles.btnText, { color: T.textMuted }]}>Cancelar</Text>
