@@ -309,6 +309,8 @@ async def update_price(
         raise HTTPException(404, "Cargador no encontrado")
     if charger.owner_id != current_user.id:
         raise HTTPException(403, "No es tu cargador")
+    if charger.active_transaction:
+        raise HTTPException(409, "No puedes cambiar el precio mientras un conductor está cargando")
     if body.price_per_kwh <= 0:
         raise HTTPException(400, "El precio debe ser mayor a 0")
     charger.price_per_kwh = body.price_per_kwh
@@ -343,6 +345,8 @@ async def update_peak_price(
         raise HTTPException(404, "Cargador no encontrado")
     if charger.owner_id != current_user.id:
         raise HTTPException(403, "No es tu cargador")
+    if charger.active_transaction:
+        raise HTTPException(409, "No puedes cambiar el precio mientras un conductor está cargando")
     if body.peak_price_per_kwh is not None and body.peak_price_per_kwh <= 0:
         raise HTTPException(400, "El precio pico debe ser mayor a 0 (o null para quitarlo)")
     charger.peak_price_per_kwh = body.peak_price_per_kwh

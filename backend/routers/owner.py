@@ -153,6 +153,31 @@ async def my_earnings(
     total_commission = sum(s.commission_cpo for s in sessions)
     total_net        = sum(s.net_profit_owner for s in sessions)
     total_kwh        = sum(s.kwh_delivered for s in sessions)
+
+    items = [s.to_dict() for s in sessions]
+
+    # Separaciones cobradas (multa/cuota) — viven en el ledger, no como Session.
+    # Las incluimos para que aparezcan en "Últimas sesiones".
+    resv = (await db.execute(
+        select(LedgerEntry).where(
+            LedgerEntry.owner_id == current_user.id,
+            LedgerEntry.type == "EARNING",
+            LedgerEntry.session_id.is_(None),
+        ).order_by(LedgerEntry.created_at.desc()).limit(50)
+    )).scalars().all()
+    for le in resv:
+        cop = int(le.amount_cents or 0) // 100
+        items.append({
+            "id": f"resv-{le.id}", "kind": "reservation",
+            "charger_id": "Separación", "location": le.description or "Separación",
+            "kwh_delivered": 0, "electricity_cost": 0,
+            "revenue_owner": cop, "net_profit_owner": cop, "total_charged": cop,
+            "session_user": None,
+            "started_at": None,
+            "ended_at": le.created_at.isoformat() if le.created_at else None,
+        })
+    items.sort(key=lambda x: x.get("ended_at") or "", reverse=True)
+
     return {
         "margin": PLATFORM_MARGIN,
         "total_revenue_cop":    round(total_revenue),
@@ -160,8 +185,8 @@ async def my_earnings(
         "total_commission_cop": round(total_commission),
         "total_net_profit_cop": round(total_net),
         "total_kwh":            round(total_kwh, 2),
-        "total_sessions":       len(sessions),
-        "sessions":             [s.to_dict() for s in sessions],
+        "total_sessions":       len(items),
+        "sessions":             items,
     }
 
 

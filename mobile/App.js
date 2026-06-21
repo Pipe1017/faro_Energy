@@ -964,7 +964,9 @@ export default function App() {
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity style={styles.priceRow} onPress={() => { setEditingPrice(item.id); setNewPrice(String(item.price_per_kwh || '')); }}>
+          <TouchableOpacity style={styles.priceRow} onPress={() => {
+            if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
+            setEditingPrice(item.id); setNewPrice(String(item.price_per_kwh || '')); }}>
             <View>
               <Text style={styles.priceLabel}>Precio al conductor</Text>
               <Text style={styles.priceValue}>$ {(item.price_per_kwh || 0).toLocaleString('es-CO')} / kWh</Text>
@@ -996,7 +998,9 @@ export default function App() {
           </View>
         ) : (
           <TouchableOpacity style={[styles.priceRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: T.cardBorder }]}
-            onPress={() => { setEditingPrice(`peak_${item.id}`); setNewPrice(String(item.peak_price_per_kwh || '')); }}>
+            onPress={() => {
+              if (isCharging) { Alert.alert('En uso', 'No puedes cambiar el precio mientras un conductor está cargando.'); return; }
+              setEditingPrice(`peak_${item.id}`); setNewPrice(String(item.peak_price_per_kwh || '')); }}>
             <View>
               <Text style={styles.priceLabel}>Tarifa pico (6–10 pm)</Text>
               <Text style={[styles.priceValue, !item.peak_price_per_kwh && { color: T.textMuted, fontSize: 13 }]}>
@@ -1735,12 +1739,28 @@ export default function App() {
               </View>
               <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6 }}>{earnings.sessions.length} sesiones · exporta el CSV para verlas todas</Text>
               {earnings.sessions.slice(0, ownerSessionsShown).map(s => {
-                const who = (s.session_user || '').includes('@')
-                  ? s.session_user.slice(0, 3) + '•••@' + s.session_user.split('@')[1]
-                  : (s.session_user || 'Conductor');
                 const when = s.ended_at || s.started_at
                   ? new Date(s.ended_at || s.started_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
                   : '—';
+                // Separación (reserva): se muestra distinto, sin kWh
+                if (s.kind === 'reservation') {
+                  return (
+                    <View key={s.id} style={styles.sessionHistCard}>
+                      <View style={styles.sessionHistHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Feather name="clock" size={12} color={T.textSec} />
+                          <Text style={styles.sessionHistId}>Separación</Text>
+                        </View>
+                        <Text style={styles.sessionHistRevenue}>+ $ {(s.net_profit_owner || 0).toLocaleString('es-CO')}</Text>
+                      </View>
+                      <Text style={styles.sessionHistLocation}>{s.location}</Text>
+                      <Text style={[styles.sessionHistDetail, { marginTop: 2 }]}>a tu saldo · {when}</Text>
+                    </View>
+                  );
+                }
+                const who = (s.session_user || '').includes('@')
+                  ? s.session_user.slice(0, 3) + '•••@' + s.session_user.split('@')[1]
+                  : (s.session_user || 'Conductor');
                 // Lo que entra a TU SALDO en esta sesión = recarga − comisión − IVA comisión
                 const recibe = Math.round((s.total_charged || 0) - (s.commission_cpo || 0) * 1.19);
                 return (

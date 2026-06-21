@@ -1300,10 +1300,11 @@ def reservation_fee_cop(charger: Charger) -> int:
 
 
 def _reservation_owner_revenue(gross_cents: int) -> int:
-    """Del bruto capturado (lo que paga el conductor) saca la parte neta del dueño,
-    revirtiendo comisión CPO + IVA + pasarela. Mismo reparto que la energía."""
+    """Del bruto capturado (en CENTAVOS) saca la parte neta del dueño en PESOS,
+    revirtiendo comisión CPO + IVA + pasarela. Devuelve COP (pesos) para que el
+    resto del código (×100 al ledger, mensaje al dueño) cuadre igual que la energía."""
     factor = (1 + PLATFORM_MARGIN) * (1 + IVA_RATE) * (1 + GATEWAY_FEE)
-    return int(round(gross_cents / factor))
+    return int(round((gross_cents / 100) / factor))
 
 
 async def _capture_reservation(db: AsyncSession, reservation: Reservation, amount_cents: int, reason: str) -> bool:
