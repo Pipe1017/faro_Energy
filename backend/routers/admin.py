@@ -7,7 +7,9 @@ Modelo A vive aquí: ingreso de Faro, IVA por girar a la DIAN y deuda con dueño
 import logging
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+import secrets
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from jose import jwt, JWTError
 from pydantic import BaseModel
@@ -18,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from models import (User, Charger, Session, Invoice, LedgerEntry, PaymentTransaction,
                     PaymentMethod, DisbursementAccount, DisbursementRecord, OwnerEvent,
-                    Reservation, WalletTransaction, mask_email)
+                    Reservation, WalletTransaction, ChargerBrandProfile, ChargerModelPhoto, mask_email)
 from core.auth import get_current_user, SECRET_KEY, ALGORITHM
 from core.config import (ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, BOGOTA,
                     MIN_WITHDRAW_COP, PLATFORM_MARGIN, IVA_RATE, monthly_fee_cop)
@@ -606,3 +608,103 @@ async def retry_invoice(invoice_id: str, _: User = Depends(require_admin),
     inv.last_error = None
     await db.commit()
     return {"ok": True, "id": inv.id, "status": inv.status}
+
+
+# ── INGENIERÍA: catálogo de modelos de cargador (ChargerBrandProfile) ──────────
+# El admin mantiene aquí las referencias que el dueño elige al enlazar un cargador.
+import re as _re_model
+
+class BrandProfileBody(BaseModel):
+    id: str | None = None                 # "wallbox-pulsar-plus"; si falta se genera del display_name
+    vendor: str
+    model: str | None = None
+    display_name: str
+    ocpp_version: str = "1.6J"
+    connector_types: list[str] = []
+    max_power_kw: float | None = None
+    description: str | None = None
+    recommendations: str | None = None
+    setup_guide_md: str | None = None
+
+def _slug(s: str) -> str:
+    return _re_model.sub(r'[^a-z0-9]+', '-', (s or '').lower()).strip('-')[:40] or secrets.token_hex(4)
+
+@router.get("/admin/brand-profiles")
+async def admin_list_brand_profiles(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(select(ChargerBrandProfile).order_by(ChargerBrandProfile.display_name))).scalars().all()
+    return {"profiles": [p.to_dict() for p in rows]}
+
+@router.post("/admin/brand-profiles")
+async def admin_create_brand_profile(body: BrandProfileBody, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    pid = body.id or _slug(body.display_name)
+    if await db.get(ChargerBrandProfile, pid):
+        raise HTTPException(409, f"Ya existe un modelo con id '{pid}'")
+    bp = ChargerBrandProfile(
+        id=pid, vendor=body.vendor, model=body.model, display_name=body.display_name,
+        ocpp_version=body.ocpp_version, connector_types=json.dumps(body.connector_types),
+        max_power_kw=body.max_power_kw, description=body.description,
+        recommendations=body.recommendations, setup_guide_md=body.setup_guide_md,
+    )
+    db.add(bp)
+    await db.commit()
+    return bp.to_dict()
+
+@router.patch("/admin/brand-profiles/{pid}")
+async def admin_update_brand_profile(pid: str, body: BrandProfileBody, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    bp = await db.get(ChargerBrandProfile, pid)
+    if not bp:
+        raise HTTPException(404, "Modelo no encontrado")
+    bp.vendor = body.vendor; bp.model = body.model; bp.display_name = body.display_name
+    bp.ocpp_version = body.ocpp_version; bp.connector_types = json.dumps(body.connector_types)
+    bp.max_power_kw = body.max_power_kw; bp.description = body.description
+    bp.recommendations = body.recommendations; bp.setup_guide_md = body.setup_guide_md
+    await db.commit()
+    return bp.to_dict()
+
+@router.delete("/admin/brand-profiles/{pid}")
+async def admin_delete_brand_profile(pid: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    bp = await db.get(ChargerBrandProfile, pid)
+    if not bp:
+        raise HTTPException(404, "Modelo no encontrado")
+    in_use = (await db.execute(select(func.count(Charger.id)).where(Charger.brand_profile_id == pid))).scalar()
+    if in_use:
+        raise HTTPException(400, f"No se puede borrar: {in_use} cargador(es) usan este modelo")
+    await db.delete(bp)
+    await db.commit()
+    return {"ok": True}
+
+_MODEL_MAX_PHOTOS = 2
+_MODEL_PHOTO_EXT  = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+@router.post("/admin/brand-profiles/{pid}/photos")
+async def admin_add_model_photo(pid: str, file: UploadFile = File(...), _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    bp = await db.get(ChargerBrandProfile, pid)
+    if not bp:
+        raise HTTPException(404, "Modelo no encontrado")
+    existing = (await db.execute(select(ChargerModelPhoto).where(ChargerModelPhoto.model_id == pid))).scalars().all()
+    if len(existing) >= _MODEL_MAX_PHOTOS:
+        raise HTTPException(400, f"Máximo {_MODEL_MAX_PHOTOS} fotos por modelo")
+    ct = (file.content_type or "").lower()
+    if ct not in _MODEL_PHOTO_EXT:
+        raise HTTPException(400, "Formato no soportado (JPG, PNG o WEBP)")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Archivo vacío")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(400, "La foto es muy pesada (máx 8 MB)")
+    photo_id = secrets.token_hex(8)
+    key = f"model-photos/{pid}/{photo_id}.{_MODEL_PHOTO_EXT[ct]}"
+    storage.put_bytes(key, data, ct)
+    photo = ChargerModelPhoto(id=photo_id, model_id=pid, storage_key=key, content_type=ct)
+    db.add(photo)
+    await db.commit()
+    return photo.to_dict()
+
+@router.delete("/admin/brand-profiles/{pid}/photos/{photo_id}")
+async def admin_delete_model_photo(pid: str, photo_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    photo = await db.get(ChargerModelPhoto, photo_id)
+    if not photo or photo.model_id != pid:
+        raise HTTPException(404, "Foto no encontrada")
+    await db.delete(photo)
+    await db.commit()
+    return {"ok": True}

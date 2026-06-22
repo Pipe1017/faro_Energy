@@ -14,7 +14,7 @@ from ocpp.v16.enums import AvailabilityType
 from core.database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerPhoto)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerPhoto, ChargerModelPhoto)
 from core.auth import get_current_user, hash_password, verify_password, create_token
 from services import storage
 import services.wompi as wompi_svc
@@ -219,6 +219,19 @@ async def edit_charger(charge_point_id: str, body: EditChargerBody,
 async def list_brand_profiles(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ChargerBrandProfile).order_by(ChargerBrandProfile.display_name))
     return {"profiles": [p.to_dict() for p in result.scalars().all()]}
+
+
+@router.get("/brand-profiles/{model_id}/photos/{photo_id}")
+async def get_model_photo(model_id: str, photo_id: str, db: AsyncSession = Depends(get_db)):
+    # Público (sin token): lo carga <img>/<Image> por URL.
+    photo = await db.get(ChargerModelPhoto, photo_id)
+    if not photo or photo.model_id != model_id:
+        raise HTTPException(404, "Foto no encontrada")
+    data = storage.get_bytes(photo.storage_key)
+    if data is None:
+        raise HTTPException(404, "Foto no encontrada")
+    return Response(content=data, media_type=photo.content_type,
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/chargers/{charge_point_id}/setup")

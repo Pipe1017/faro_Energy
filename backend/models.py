@@ -90,6 +90,13 @@ class ChargerBrandProfile(Base):
     features: Mapped[str | None] = mapped_column(Text, nullable=True)   # JSON: {"remote_start": true, ...}
     quirks: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON: {"heartbeat_interval": 300, ...}
     setup_guide_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Contenido de catálogo (lo edita el admin en "Ingeniería"; lo ve el dueño al enlazar)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)       # qué es / para quién
+    recommendations: Mapped[str | None] = mapped_column(Text, nullable=True)   # tips de instalación/uso
+
+    # Fotos del MODELO (catálogo). selectin → siempre cargadas, to_dict las puede leer.
+    photos: Mapped[list["ChargerModelPhoto"]] = relationship(
+        "ChargerModelPhoto", lazy="selectin", cascade="all, delete-orphan")
 
     def to_dict(self) -> dict:
         return {
@@ -103,7 +110,27 @@ class ChargerBrandProfile(Base):
             "features": json.loads(self.features) if self.features else {},
             "quirks": json.loads(self.quirks) if self.quirks else {},
             "setup_guide_md": self.setup_guide_md,
+            "description": self.description,
+            "recommendations": self.recommendations,
+            "photos": [p.to_dict() for p in self.photos],
         }
+
+
+class ChargerModelPhoto(Base):
+    """Fotos de un MODELO del catálogo (no de un cargador físico). Las sube el admin
+    en 'Ingeniería'; el dueño las ve al elegir la referencia. Bytes en MinIO."""
+    __tablename__ = "charger_model_photos"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    model_id: Mapped[str] = mapped_column(String, ForeignKey("charger_brand_profiles.id"), index=True)
+    storage_key: Mapped[str] = mapped_column(String)
+    content_type: Mapped[str] = mapped_column(String, default="image/jpeg")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict:
+        # URL relativa; bytes públicos (los carga <img>/<Image> por URL).
+        return {"id": self.id, "url": f"/brand-profiles/{self.model_id}/photos/{self.id}"}
 
 
 class Charger(Base):
