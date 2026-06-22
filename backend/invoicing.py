@@ -2,7 +2,7 @@
 
 El Modelo A factura por concepto:
   • RECARGA     → por MANDATO, a nombre del dueño, al conductor.
-  • COMMISSION  → de Faro al dueño (comisión 10%).
+  • COMMISSION  → de Faro al dueño (comisión = PLATFORM_MARGIN).
   • SUBSCRIPTION→ de Faro al dueño (mensualidad).
 
 Hoy hay un StubProvider que simula la emisión (genera CUFE/número falsos y un PDF
@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timezone
 
 import storage
+from config import PLATFORM_MARGIN
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ INVOICE_PROVIDER = os.getenv("INVOICE_PROVIDER", "stub").lower()
 
 _KIND_LABEL = {
     "RECARGA": "Servicio de recarga de vehículo eléctrico",
-    "COMMISSION": "Comisión de plataforma Faro Energy (10%)",
+    "COMMISSION": f"Comisión de plataforma Faro Energy ({round(PLATFORM_MARGIN * 100)}%)",
     "SUBSCRIPTION": "Suscripción mensual plataforma Faro Energy",
 }
 

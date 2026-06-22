@@ -446,7 +446,7 @@ async def _settle_captured(db: AsyncSession, pc: PendingCharge, pay_tx: PaymentT
     if commission + commission_iva > 0:
         db.add(LedgerEntry(owner_id=owner_id, session_id=session.id, type="COMMISSION",
                            amount_cents=-(commission + commission_iva) * 100,
-                           description=f"Comisión Faro 10% + IVA — {tag}"))
+                           description=f"Comisión Faro {round(PLATFORM_MARGIN * 100)}% + IVA — {tag}"))
     if gateway_owner > 0:
         db.add(LedgerEntry(owner_id=owner_id, session_id=session.id, type="GATEWAY",
                            amount_cents=-gateway_owner * 100, description=f"Pasarela — {tag}"))

@@ -1610,7 +1610,7 @@ export default function App() {
 
               <Text style={styles.sectionTitle}>Mi ganancia (detalle)</Text>
               {[
-                { label: 'Comisión 10% (tuya)', value: adminSummary.commission_cpo_cop, color: T.green },
+                { label: `Comisión Faro ${Math.round(PLATFORM_MARGIN * 100)}%`, value: adminSummary.commission_cpo_cop, color: T.green },
                 { label: 'IVA cobrado (remitir a DIAN)', value: adminSummary.iva_cop, color: T.warningText },
                 { label: 'Fee pasarela Wompi', value: adminSummary.gateway_cop, color: T.textMuted },
               ].map(r => (

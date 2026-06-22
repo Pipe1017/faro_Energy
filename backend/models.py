@@ -270,9 +270,9 @@ class Session(Base):
     session_user: Mapped[str | None] = mapped_column(String, nullable=True)
     kwh_delivered: Mapped[float] = mapped_column(Float)
     price_per_kwh: Mapped[float] = mapped_column(Float)       # precio base del dueño
-    price_to_user: Mapped[float] = mapped_column(Float)       # precio_base × (1 + margen)
+    price_to_user: Mapped[float] = mapped_column(Float)       # precio final/kWh al conductor = precio_base × (1 + IVA)
     revenue_owner: Mapped[float] = mapped_column(Float)         # ingreso bruto del dueño (precio_base × kWh)
-    commission_cpo: Mapped[float] = mapped_column(Float)       # comisión CPO 10%
+    commission_cpo: Mapped[float] = mapped_column(Float)       # comisión Faro (PLATFORM_MARGIN, hoy 15%) sobre la base
     iva_amount: Mapped[float] = mapped_column(Float, default=0)         # IVA 19%
     gateway_fee: Mapped[float] = mapped_column(Float, default=0)        # pasarela 3%
     total_charged: Mapped[float] = mapped_column(Float)        # total final cobrado al conductor
