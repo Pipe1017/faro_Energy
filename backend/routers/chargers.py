@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response, UploadFile, File
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from ocpp.v16 import call
@@ -281,6 +281,8 @@ async def delete_charger(
     sim_mgr.stop(charge_point_id)
     # Limpiar conexión OCPP activa
     connected_chargers.pop(charge_point_id, None)
+    # Borrar dependientes que referencian al cargador (FK) antes de eliminarlo.
+    await db.execute(delete(ChargerPhoto).where(ChargerPhoto.charger_id == charge_point_id))
     await db.delete(charger)
     await db.commit()
     logger.info(f"Cargador {charge_point_id} eliminado por {current_user.email}")
