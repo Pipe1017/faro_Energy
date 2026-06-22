@@ -195,6 +195,7 @@ class Charger(Base):
             "lat": self.lat,
             "lng": self.lng,
             "status": self.status,
+            "archived": bool(self.archived),
             "model": self.model,
             "vendor": self.vendor,
             "brand_profile_id": self.brand_profile_id,

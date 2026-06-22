@@ -39,6 +39,7 @@ export default function App() {
   const [simRunning, setSimRunning] = useState([]);   // simuladores corriendo (faltaba declararlo)
 
   const [chargers, setChargers]     = useState([]);
+  const [archivedChargers, setArchivedChargers] = useState([]);  // dados de baja (dueño)
   const [refreshing, setRefreshing] = useState(false);
 
   const [earnings, setEarnings]         = useState(null);
@@ -383,6 +384,7 @@ export default function App() {
       apiFetch('/my-stats?period=week', {}, token).then(setMyStats).catch(() => {});  // solo para la gráfica de 7 días
     }
     if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
+    if (tab === 'lista' && isOwner) { fetchArchivedChargers(); }
     if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); }
     if (tab === 'mapa' && externalChargers.length === 0) {
       apiFetch('/external-chargers', {}, token).then(d => setExternalChargers(d.chargers || [])).catch(() => {});
@@ -780,21 +782,39 @@ export default function App() {
     } catch (e) { Alert.alert('Error', e.message); }
   };
 
+  const fetchArchivedChargers = async () => {
+    try { const d = await apiFetch('/my-chargers/archived', {}, token); setArchivedChargers(d.chargers || []); }
+    catch {}
+  };
+
+  // "Dar de baja" = archivar (soft-delete): sale del mapa y de la lista activa, se
+  // conserva todo (ID, historial) y queda minimizado al final para reactivar.
   const deleteCharger = (c) => {
     Alert.alert(
-      'Eliminar cargador',
-      `¿Seguro que quieres eliminar ${c.id}?\n${c.location}\n\nEsta acción no se puede deshacer.`,
+      'Dar de baja',
+      `¿Dar de baja ${c.id}?\n${c.location}\n\nSale del mapa y de tu lista, pero se guarda el historial. Puedes reactivarlo cuando quieras.`,
       [
-        { text: 'Eliminar', style: 'destructive', onPress: async () => {
+        { text: 'Dar de baja', style: 'destructive', onPress: async () => {
           try {
             await apiFetch(`/chargers/${c.id}`, { method: 'DELETE' }, token);
-            fetchStatus();
-            Alert.alert('Eliminado', `${c.id} fue eliminado correctamente.`);
+            fetchStatus(); fetchArchivedChargers();
           } catch (e) { Alert.alert('Error', e.message); }
         }},
         { text: 'Cancelar' },
       ]
     );
+  };
+
+  const restoreCharger = (c) => {
+    Alert.alert('Reactivar', `¿Reactivar ${c.id}? Volverá al mapa y a tu lista.`, [
+      { text: 'Reactivar', onPress: async () => {
+        try {
+          await apiFetch(`/chargers/${c.id}/restore`, { method: 'PATCH' }, token);
+          fetchStatus(); fetchArchivedChargers();
+        } catch (e) { Alert.alert('Error', e.message); }
+      }},
+      { text: 'Cancelar' },
+    ]);
   };
 
   const toggleSim = async (c) => {
@@ -993,6 +1013,7 @@ export default function App() {
     setDisbForm, setAddDisbModal, earnings, ownerSessionsShown, setOwnerSessionsShown,
     // Lista / Mis cargadores (dueño) + OwnerCard
     myChargers, refreshing, fetchStatus, openNewCharger, serverOk,
+    archivedChargers, restoreCharger,
     editingPrice, newPrice, setNewPrice, setEditingPrice, savePrice, openEditCharger,
     chargerPhotos, photoBusy, addPhoto, removePhoto, photoUri, setPhotoView,
     togglePause, deleteCharger, fetchEarnings,

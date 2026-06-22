@@ -99,6 +99,21 @@ async def my_chargers(
     return {"chargers": [c.to_dict() for c in chargers]}
 
 
+@router.get("/my-chargers/archived")
+async def my_archived_chargers(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cargadores dados de baja del dueño (para mostrarlos minimizados al final)."""
+    if current_user.role != "owner":
+        raise HTTPException(403, "Solo para dueños de cargadores")
+    result = await db.execute(
+        select(Charger).where(Charger.owner_id == current_user.id, Charger.archived.is_(True))
+                       .options(selectinload(Charger.owner)).order_by(Charger.id)
+    )
+    return {"chargers": [c.to_dict() for c in result.scalars().all()]}
+
+
 
 import re as _re_charger
 
@@ -288,6 +303,28 @@ async def delete_charger(
     charger.status = "Offline"
     await db.commit()
     logger.info(f"Cargador {charge_point_id} archivado por {current_user.email}")
+    return {"ok": True}
+
+
+@router.patch("/chargers/{charge_point_id}/restore")
+async def restore_charger(
+    charge_point_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reactivar un cargador dado de baja: vuelve a la lista y al mapa."""
+    charger = await db.get(Charger, charge_point_id)
+    if not charger:
+        raise HTTPException(404, "Cargador no encontrado")
+    if charger.owner_id != current_user.id:
+        raise HTTPException(403, "No es tu cargador")
+    charger.archived = False
+    charger.status = "Offline"
+    await db.commit()
+    # Reiniciar el simulador del cargador reactivado
+    try: sim_mgr.start(charge_point_id, charger.power_kw or 7)
+    except Exception: pass
+    logger.info(f"Cargador {charge_point_id} reactivado por {current_user.email}")
     return {"ok": True}
 
 class PauseBody(BaseModel):

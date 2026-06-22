@@ -8,7 +8,7 @@ import { OwnerCard } from '../components/OwnerCard';
 
 // Pantalla "Mis cargadores" (dueño): lista de sus cargadores + botón Agregar.
 export function ListScreen() {
-  const { myChargers, refreshing, fetchStatus, openNewCharger, serverOk } = useApp();
+  const { myChargers, refreshing, fetchStatus, openNewCharger, serverOk, archivedChargers, restoreCharger } = useApp();
   return (
     <FlatList
       data={myChargers}
@@ -16,6 +16,26 @@ export function ListScreen() {
       renderItem={({ item }) => <OwnerCard item={item} />}
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchStatus(true)} tintColor={T.green} />}
+      ListFooterComponent={(archivedChargers && archivedChargers.length > 0) ? (
+        <View style={{ marginTop: 18 }}>
+          <Text style={[styles.sectionTitle, { color: T.textMuted }]}>Dados de baja ({archivedChargers.length})</Text>
+          {archivedChargers.map(c => (
+            <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: T.surface, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: T.cardBorder, opacity: 0.85 }}>
+              <Feather name="archive" size={15} color={T.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: T.textSec, fontSize: 13, fontWeight: '600' }}>{c.id}</Text>
+                <Text style={{ color: T.textMuted, fontSize: 11 }} numberOfLines={1}>{c.location}</Text>
+              </View>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: T.greenFaint, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: T.greenDark }}
+                onPress={() => restoreCharger(c)}>
+                <Feather name="rotate-ccw" size={12} color={T.green} />
+                <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Reactivar</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      ) : null}
       ListHeaderComponent={(
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <Text style={styles.sectionTitle}>Mis cargadores</Text>
