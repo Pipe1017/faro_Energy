@@ -39,7 +39,20 @@ async function api(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// Subida multipart (fotos de modelo). No fijamos Content-Type: el navegador arma el boundary.
+async function apiUpload(path, file) {
+  const form = new FormData();
+  form.append('file', file);
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: form });
+  if (res.status === 401) { logout(); throw new Error('Sesión vencida'); }
+  if (!res.ok) { let d = `Error ${res.status}`; try { d = (await res.json()).detail || d; } catch {} throw new Error(d); }
+  return res.json();
+}
+
 const cop = (n) => '$' + (n ?? 0).toLocaleString('es-CO');
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function logout() {
   token = null;
@@ -89,13 +102,20 @@ function renderLogin(error = '') {
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function renderApp() {
   clearMap();  // al cambiar de pestaña, soltar el mapa anterior
-  const tabs = [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['comisiones', 'Comisiones'], ['duenos', 'Dueños'], ['usuarios', 'Usuarios']];
+  // Dos módulos: Negocio (operación) e Ingeniería (catálogo de modelos).
+  const modules = [
+    ['Negocio', [['resumen', 'Resumen'], ['mapa', 'Mapa'], ['facturas', 'Facturas'], ['comisiones', 'Comisiones'], ['duenos', 'Dueños'], ['usuarios', 'Usuarios']]],
+    ['Ingeniería', [['modelos', 'Modelos de cargador']]],
+  ];
   app.innerHTML = `
     <div class="shell">
       <aside class="side">
         <img src="/logo-faro-claro.svg" class="brand-logo" alt="Faro Energy Admin" />
         <nav>
-          ${tabs.map(([k, l]) => `<button class="nav ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('')}
+          ${modules.map(([group, tabs]) => `
+            <div class="nav-group">${group}</div>
+            ${tabs.map(([k, l]) => `<button class="nav ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('')}
+          `).join('')}
         </nav>
         <button class="logout" id="logout">Salir</button>
       </aside>
@@ -127,6 +147,10 @@ async function renderTab() {
     else if (state.tab === 'usuarios') {
       if (state.userDetail) { renderUserDetail(view); }
       else { state.users = await api('/admin/users'); renderUsuarios(view); }
+    }
+    else if (state.tab === 'modelos') {
+      state.models = (await api('/admin/brand-profiles')).profiles || [];
+      renderModelos(view);
     }
   } catch (err) {
     view.innerHTML = `<div class="error-box">${err.message}</div>`;
@@ -659,6 +683,109 @@ function refundUser(u) {
     })
     .then((d) => { state.userDetail = d; renderTab(); })
     .catch((err) => alert(err.message));
+}
+
+// ── INGENIERÍA: catálogo de modelos de cargador ───────────────────────────────
+function modelCard(p) {
+  const photos = (p.photos || []).map(ph => `
+    <div class="model-photo">
+      <img src="${API_URL}${ph.url}" alt="${esc(p.display_name)}" />
+      <button class="model-photo-del" data-delphoto="${ph.id}" data-model="${p.id}" title="Quitar foto">✕</button>
+    </div>`).join('');
+  const canAdd = (p.photos || []).length < 2;
+  return `
+    <div class="card model-item">
+      <div class="model-photos">
+        ${photos || '<span class="muted" style="font-size:.85rem;">Sin fotos</span>'}
+        ${canAdd ? `<label class="model-photo-add">+ Foto<input type="file" accept="image/*" data-photo="${p.id}" hidden /></label>` : ''}
+      </div>
+      <div style="flex:1;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+          <b>${esc(p.display_name)}</b>
+          <span class="muted" style="font-size:.8rem;">${esc(p.id)}</span>
+        </div>
+        <div class="muted" style="font-size:.85rem;">${esc(p.vendor)}${p.model ? ' · ' + esc(p.model) : ''}${p.max_power_kw ? ' · ' + p.max_power_kw + ' kW' : ''}${(p.connector_types || []).length ? ' · ' + p.connector_types.join(', ') : ''}</div>
+        ${p.description ? `<p style="margin:6px 0 2px;font-size:.9rem;">${esc(p.description)}</p>` : ''}
+        ${p.recommendations ? `<p style="margin:2px 0;font-size:.82rem;color:#6b5d4a;">💡 ${esc(p.recommendations)}</p>` : ''}
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="secondary" data-edit="${p.id}">Editar</button>
+          <button class="danger" data-del="${p.id}">Eliminar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderModelos(view) {
+  const editing = state.editingModel || null;
+  const m = editing ? (state.models || []).find(x => x.id === editing) : null;
+  const f = m || { display_name: '', vendor: '', model: '', max_power_kw: '', ocpp_version: '1.6J', connector_types: [], description: '', recommendations: '', setup_guide_md: '' };
+  view.innerHTML = `
+    <h1>Modelos de cargador</h1>
+    <p class="muted">Catálogo de referencias que el dueño elige al enlazar un cargador (con foto, descripción y recomendaciones).</p>
+
+    <div class="card" style="margin-bottom:18px;">
+      <h3 style="margin-top:0;">${editing ? 'Editar: ' + esc(f.display_name) : 'Nuevo modelo'}</h3>
+      <form id="model-form" class="model-form">
+        <label>Nombre visible *</label><input id="mf-display" value="${esc(f.display_name)}" required />
+        <label>Marca (vendor) *</label><input id="mf-vendor" value="${esc(f.vendor)}" required />
+        <label>Modelo</label><input id="mf-model" value="${esc(f.model || '')}" />
+        <label>Potencia (kW)</label><input id="mf-power" type="number" step="0.1" value="${f.max_power_kw ?? ''}" />
+        <label>Conectores (separados por coma)</label><input id="mf-conn" value="${esc((f.connector_types || []).join(', '))}" placeholder="Type 2, CCS2" />
+        <label>Versión OCPP</label><input id="mf-ocpp" value="${esc(f.ocpp_version || '1.6J')}" />
+        <label>Descripción</label><textarea id="mf-desc" rows="3">${esc(f.description || '')}</textarea>
+        <label>Recomendaciones</label><textarea id="mf-rec" rows="3">${esc(f.recommendations || '')}</textarea>
+        <label>Guía de instalación (markdown)</label><textarea id="mf-guide" rows="3">${esc(f.setup_guide_md || '')}</textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button type="submit">${editing ? 'Guardar cambios' : 'Crear modelo'}</button>
+          ${editing ? '<button type="button" id="mf-cancel" class="secondary">Cancelar</button>' : ''}
+        </div>
+        <div id="mf-error" class="error" style="margin-top:8px;"></div>
+      </form>
+      ${editing ? '<p class="muted" style="font-size:.8rem;margin-top:8px;">Las fotos se agregan desde la tarjeta del modelo abajo.</p>' : '<p class="muted" style="font-size:.8rem;margin-top:8px;">Crea el modelo y luego agrégale hasta 2 fotos desde su tarjeta.</p>'}
+    </div>
+
+    <div class="model-list">
+      ${(state.models || []).map(modelCard).join('') || '<p class="muted">Aún no hay modelos en el catálogo.</p>'}
+    </div>`;
+
+  document.getElementById('model-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      display_name: document.getElementById('mf-display').value.trim(),
+      vendor: document.getElementById('mf-vendor').value.trim(),
+      model: document.getElementById('mf-model').value.trim() || null,
+      max_power_kw: parseFloat(document.getElementById('mf-power').value) || null,
+      connector_types: document.getElementById('mf-conn').value.split(',').map(s => s.trim()).filter(Boolean),
+      ocpp_version: document.getElementById('mf-ocpp').value.trim() || '1.6J',
+      description: document.getElementById('mf-desc').value.trim() || null,
+      recommendations: document.getElementById('mf-rec').value.trim() || null,
+      setup_guide_md: document.getElementById('mf-guide').value.trim() || null,
+    };
+    try {
+      if (editing) await api(`/admin/brand-profiles/${editing}`, { method: 'PATCH', body: JSON.stringify(body) });
+      else await api('/admin/brand-profiles', { method: 'POST', body: JSON.stringify(body) });
+      state.editingModel = null;
+      renderTab();
+    } catch (err) { document.getElementById('mf-error').textContent = err.message; }
+  });
+  const cancel = document.getElementById('mf-cancel');
+  if (cancel) cancel.addEventListener('click', () => { state.editingModel = null; renderTab(); });
+
+  view.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => { state.editingModel = b.dataset.edit; renderTab(); }));
+  view.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('¿Eliminar este modelo del catálogo?')) return;
+    try { await api(`/admin/brand-profiles/${b.dataset.del}`, { method: 'DELETE' }); state.editingModel = null; renderTab(); }
+    catch (err) { alert(err.message); }
+  }));
+  view.querySelectorAll('[data-photo]').forEach(inp => inp.addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try { await apiUpload(`/admin/brand-profiles/${inp.dataset.photo}/photos`, file); renderTab(); }
+    catch (err) { alert(err.message); }
+  }));
+  view.querySelectorAll('[data-delphoto]').forEach(b => b.addEventListener('click', async () => {
+    try { await api(`/admin/brand-profiles/${b.dataset.model}/photos/${b.dataset.delphoto}`, { method: 'DELETE' }); renderTab(); }
+    catch (err) { alert(err.message); }
+  }));
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
