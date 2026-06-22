@@ -7,7 +7,7 @@
 --
 --  Uso (en el servidor):
 --    docker compose -f docker-compose.prod.yml exec -T db \
---      psql -U postgres -d cpo_db < backend/clean_transactions.sql
+--      psql -U postgres -d cpo_db < backend/scripts/clean_transactions.sql
 --
 --  Es transaccional: si algo falla, NO borra nada (ROLLBACK automático).
 -- ============================================================================

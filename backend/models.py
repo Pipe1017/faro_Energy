@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from sqlalchemy import String, Float, DateTime, Integer, ForeignKey, Boolean, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from database import Base
-from config import RESERVE_CONVENIENCE_COP
+from core.database import Base
+from core.config import RESERVE_CONVENIENCE_COP
 
 BOGOTA_TZ = ZoneInfo("America/Bogota")
 PEAK_START_HOUR = 18   # franja pico Colombia: 18:00–22:00 hora Bogotá

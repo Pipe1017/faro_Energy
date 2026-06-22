@@ -146,7 +146,7 @@ SEED_CHARGERS = [
 import json as _json
 from pathlib import Path as _Path
 
-_BRAND_DIR = _Path(__file__).parent / "brand_profiles"
+_BRAND_DIR = _Path(__file__).parent.parent / "brand_profiles"
 SEED_BRAND_PROFILES = [
     _json.loads(f.read_text(encoding="utf-8"))
     for f in sorted(_BRAND_DIR.glob("*.json"))

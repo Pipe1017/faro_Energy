@@ -13,14 +13,14 @@ from ocpp.v16 import ChargePoint as cp
 from ocpp.v16 import call_result, call
 from ocpp.v16.enums import Action, RegistrationStatus, AvailabilityType
 
-from database import AsyncSessionLocal
+from core.database import AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
                     PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, Invoice,
                     WalletTransaction)
-import wompi as wompi_svc
-import emailer
-from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
+import services.wompi as wompi_svc
+from services import emailer
+from core.config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
                     CHARGE_MAX_ATTEMPTS, OFFLINE_SESSION_TIMEOUT, IDLE_SESSION_TIMEOUT, MIN_WITHDRAW_COP,
                     SETTLEMENT_DAYS, SETTLE_CHECK_INTERVAL, BOGOTA, _PERIOD_HOURS,
                     RESERVE_MINUTES, RESERVE_GRACE_MINUTES, RESERVE_FEE_FACTOR,
@@ -29,7 +29,7 @@ from config import (PLATFORM_MARGIN, IVA_RATE, GATEWAY_FEE, WOMPI_MIN_CENTS,
                     ACCT_FARO_REVENUE, ACCT_FARO_IVA, ACCT_FARO_GATEWAY, GATEWAY_BORNE_BY,
                     SUBSCRIPTION_COP, WOMPI_FEE_PCT, WOMPI_FEE_FIXED_COP, monthly_fee_cop,
                     AUTO_SUBSCRIPTION_BILLING, SUBSCRIPTION_CHECK_INTERVAL)
-from state import connected_chargers
+from core.state import connected_chargers
 
 logger = logging.getLogger(__name__)
 
@@ -712,7 +712,7 @@ async def _refundable_cents(db: AsyncSession, user_id: str) -> int:
     """Monto que se le puede DEVOLVER al conductor (legal): solo su dinero propio
     (recargas TOPUP) que no haya consumido, MENOS el costo de procesamiento. Los
     BONUS no se devuelven. = max(0, recargas_propias − consumido − costo)."""
-    from config import REFUND_PROCESSING_COP
+    from core.config import REFUND_PROCESSING_COP
     topups = int((await db.execute(
         select(func.coalesce(func.sum(WalletTransaction.amount_cents), 0))
         .where(WalletTransaction.user_id == user_id, WalletTransaction.type == "TOPUP")

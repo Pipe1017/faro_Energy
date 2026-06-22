@@ -11,16 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ocpp.v16 import call
 from ocpp.v16.enums import AvailabilityType
 
-from database import get_db, AsyncSessionLocal
+from core.database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
                     PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent)
-from auth import get_current_user, hash_password, verify_password, create_token
-import wompi as wompi_svc
-import sim as sim_mgr
-from config import *
-from state import connected_chargers
-from engine import (_finalize_session, _settle_captured, _owner_balance_cents,
+from core.auth import get_current_user, hash_password, verify_password, create_token
+import services.wompi as wompi_svc
+import services.sim as sim_mgr
+from core.config import *
+from core.state import connected_chargers
+from services.engine import (_finalize_session, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
                     _mark_offline_after_grace)
@@ -71,7 +71,7 @@ async def external_chargers(db: AsyncSession = Depends(get_db)):
     Se muestran como 'próximamente' en el mapa. Cacheado para no golpear la API.
     Requiere OCM_API_KEY (gratis en openchargemap.org). Crédito a OCM obligatorio."""
     import httpx
-    from config import OCM_API_KEY, OCM_COUNTRY, OCM_MAX_RESULTS, OCM_CACHE_HOURS
+    from core.config import OCM_API_KEY, OCM_COUNTRY, OCM_MAX_RESULTS, OCM_CACHE_HOURS
     if not OCM_API_KEY:
         return {"chargers": [], "source": None, "attribution": None}
 

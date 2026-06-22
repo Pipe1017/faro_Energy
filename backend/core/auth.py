@@ -6,7 +6,7 @@ from jose import jwt, JWTError
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_db
+from core.database import get_db
 import models
 
 # load_dotenv aquí porque este módulo se importa antes del load_dotenv() de main.py

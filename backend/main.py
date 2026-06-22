@@ -10,12 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from dotenv import load_dotenv
 
-from database import engine, AsyncSessionLocal, Base
+from core.database import engine, AsyncSessionLocal, Base
 from models import User, Charger, ChargerBrandProfile, new_tag
-from auth import hash_password, verify_password
-import sim as sim_mgr
-from config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
-from engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker, _invoice_worker
+from core.auth import hash_password, verify_password
+import services.sim as sim_mgr
+from core.config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
+from services.engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker, _invoice_worker
 from routers import ocpp, public, auth as auth_router, chargers, reservations, driver, owner, admin
 
 load_dotenv()
@@ -193,7 +193,7 @@ async def startup():
 
     # Liquidación a dueños: backfill + (giro automático SOLO si AUTO_SETTLEMENT)
     await _backfill_ledger()
-    from config import AUTO_SETTLEMENT
+    from core.config import AUTO_SETTLEMENT
     if AUTO_SETTLEMENT:
         asyncio.create_task(_settlement_worker())
         logger.info("Pago automático a dueños: ACTIVADO (días 5/20)")
@@ -201,9 +201,9 @@ async def startup():
         logger.info("Pago automático a dueños: DESACTIVADO — pagos manuales desde el back-office")
 
     # Cobro automático de la mensualidad (placeholder listo: AUTO_SUBSCRIPTION_BILLING)
-    from config import AUTO_SUBSCRIPTION_BILLING
+    from core.config import AUTO_SUBSCRIPTION_BILLING
     if AUTO_SUBSCRIPTION_BILLING:
-        from engine import _subscription_billing_worker
+        from services.engine import _subscription_billing_worker
         asyncio.create_task(_subscription_billing_worker())
         logger.info("Cobro automático de mensualidad: ACTIVADO")
     else:

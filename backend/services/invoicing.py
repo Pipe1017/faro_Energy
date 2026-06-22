@@ -19,8 +19,8 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-import storage
-from config import PLATFORM_MARGIN
+from services import storage
+from core.config import PLATFORM_MARGIN
 
 logger = logging.getLogger(__name__)
 

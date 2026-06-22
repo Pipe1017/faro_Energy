@@ -11,17 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ocpp.v16 import call
 from ocpp.v16.enums import AvailabilityType
 
-from database import get_db, AsyncSessionLocal
+from core.database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
                     PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerRating,
                     WalletTransaction)
-from auth import get_current_user, hash_password, verify_password, create_token
-import wompi as wompi_svc
-import sim as sim_mgr
-from config import *
-from state import connected_chargers
-from engine import (_finalize_session, _settle_captured, _owner_balance_cents,
+from core.auth import get_current_user, hash_password, verify_password, create_token
+import services.wompi as wompi_svc
+import services.sim as sim_mgr
+from core.config import *
+from core.state import connected_chargers
+from services.engine import (_finalize_session, _settle_captured, _owner_balance_cents,
                     _settle_owner, _settle_lock, _period_start_utc, _next_settlement_date,
                     _PERIOD_HOURS, calc_preauth_cop, ChargePoint, WebSocketAdapter,
                     _mark_offline_after_grace, fulfill_reservation_if_any, _wallet_balance_cents,
@@ -110,7 +110,7 @@ async def my_session_receipt(session_id: int, token: str, db: AsyncSession = Dep
     """Comprobante (factura RECARGA) de una carga propia, en PDF. Token va por query
     para poder abrirlo en el navegador. Solo el conductor dueño de la sesión accede."""
     from jose import jwt, JWTError
-    from auth import SECRET_KEY, ALGORITHM
+    from core.auth import SECRET_KEY, ALGORITHM
     from models import Invoice
     import storage, invoicing
     try:
