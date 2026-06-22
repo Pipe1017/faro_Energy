@@ -1826,30 +1826,59 @@ export default function App() {
               <Text style={styles.mapPanelLocation}>{chargerForm.id ? 'Edita los datos y el precio de tu cargador.' : 'Te asignaremos un ID único (FARO-XXXX) y la URL para configurar tu equipo.'}</Text>
 
               <View style={{ gap: 10, marginTop: 16 }}>
-                {/* Marca del cargador */}
-                {brandProfiles.length > 0 && (
+                {/* Modelo / referencia del catálogo (con foto, descripción y recomendaciones) */}
+                {brandProfiles.length > 0 && (() => {
+                  const sel = brandProfiles.find(b => b.id === chargerForm.brand_profile_id);
+                  return (
                   <View>
-                    <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>Marca (opcional)</Text>
+                    <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>Modelo / referencia (opcional)</Text>
                     <View style={[styles.roleRow, { flexWrap: 'wrap' }]}>
                       {brandProfiles.map(bp => (
                         <TouchableOpacity key={bp.id}
                           style={[styles.roleBtn, chargerForm.brand_profile_id === bp.id && styles.roleBtnActive]}
-                          onPress={() => setChargerForm(f=>({...f, brand_profile_id: f.brand_profile_id === bp.id ? null : bp.id}))}>
+                          onPress={() => setChargerForm(f => {
+                            const selecting = f.brand_profile_id !== bp.id;
+                            return {
+                              ...f,
+                              brand_profile_id: selecting ? bp.id : null,
+                              // al elegir, prefill de potencia/conector si están vacíos
+                              ...(selecting ? {
+                                power_kw: f.power_kw || (bp.max_power_kw != null ? String(bp.max_power_kw) : ''),
+                                connector_type: f.connector_type || (bp.connector_types && bp.connector_types[0]) || 'Type 2',
+                              } : {}),
+                            };
+                          })}>
                           <Text style={[styles.roleBtnText, chargerForm.brand_profile_id === bp.id && styles.roleBtnTextActive]}>{bp.display_name}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
-                    {chargerForm.brand_profile_id ? (
-                      <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 4 }} numberOfLines={3}>
-                        {(brandProfiles.find(b => b.id === chargerForm.brand_profile_id) || {}).setup_guide_md}
-                      </Text>
+                    {sel ? (
+                      <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, marginTop: 8, borderWidth: 1, borderColor: T.cardBorder }}>
+                        {sel.photos?.length > 0 && (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                            {sel.photos.map(p => (
+                              <TouchableOpacity key={p.id} activeOpacity={0.9} onPress={() => setPhotoView({ url: `${API_URL}${p.url}` })}>
+                                <Image source={{ uri: `${API_URL}${p.url}` }} style={{ width: 130, height: 98, borderRadius: 8, marginRight: 8, backgroundColor: T.card, borderWidth: 1, borderColor: T.cardBorder }} />
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        )}
+                        <Text style={{ color: T.textPri, fontWeight: '700', fontSize: 13 }}>{sel.display_name}</Text>
+                        <Text style={{ color: T.textMuted, fontSize: 11, marginTop: 1 }}>
+                          {[sel.vendor, sel.max_power_kw ? `${sel.max_power_kw} kW` : null, (sel.connector_types || []).join(', ')].filter(Boolean).join(' · ')}
+                        </Text>
+                        {sel.description ? <Text style={{ color: T.textSec, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{sel.description}</Text> : null}
+                        {sel.recommendations ? <Text style={{ color: T.green, fontSize: 11.5, marginTop: 6, lineHeight: 16 }}>💡 {sel.recommendations}</Text> : null}
+                        {sel.setup_guide_md ? <Text style={{ color: T.textMuted, fontSize: 10.5, marginTop: 6 }} numberOfLines={4}>{sel.setup_guide_md}</Text> : null}
+                      </View>
                     ) : (
                       <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 4 }}>
-                        Si eliges la marca te mostramos la guía de conexión exacta. También la detectamos sola cuando el equipo se conecte.
+                        Elige la referencia de tu cargador: te mostramos foto, recomendaciones y la guía de conexión. También la detectamos sola cuando el equipo se conecte.
                       </Text>
                     )}
                   </View>
-                )}
+                  );
+                })()}
 
                 {/* Ubicación */}
                 <TextInput style={styles.input} placeholder="Ubicación (ej: CC Santafé, Medellín)"
