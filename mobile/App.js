@@ -21,49 +21,13 @@ import { useUserLocation, nearestCharger, openDirections, formatDistance, havers
 import { FaroLogo } from './src/components/FaroLogo';
 import { ChargerMarker, ExternalMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
+import { BootSplash } from './src/components/BootSplash';
+import { SlideUp } from './src/components/SlideUp';
+import { PhotoViewer } from './src/components/PhotoViewer';
 import { styles } from './src/styles';
 
 const IVA_RATE = 0.19;          // IVA Colombia (el conductor paga base × 1.19)
 const PLATFORM_MARGIN = 0.15;   // comisión Faro 15% (sobre la base)
-
-// Pantalla de inicio: el logo del faro CRECE (~1.5 s) con una vibración muy leve.
-function BootSplash() {
-  const scale   = useRef(new Animated.Value(0.55)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    // Vibración muy leve: dos toques cortísimos mientras crece.
-    try { Vibration.vibrate(Platform.OS === 'android' ? [0, 12, 120, 12] : 18); } catch (e) {}
-    Animated.parallel([
-      Animated.timing(scale,   { toValue: 1, duration: 1500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 1, duration: 700,  useNativeDriver: true }),
-    ]).start();
-  }, []);
-  return (
-    <View style={styles.bootScreen}>
-      <Animated.View style={{ transform: [{ scale }], opacity, alignItems: 'center' }}>
-        <FaroLogo height={120} />
-        <Text style={{ color: '#2b2520', fontWeight: '800', fontSize: 24, marginTop: 18, letterSpacing: -0.5 }}>
-          Faro<Text style={{ color: '#b45309' }}>Energy</Text>
-        </Text>
-        <Text style={{ color: '#94866f', fontSize: 11, marginTop: 4, letterSpacing: 2.5, fontWeight: '700' }}>CARGA INTELIGENTE</Text>
-      </Animated.View>
-    </View>
-  );
-}
-
-// Panel que sube con resorte al aparecer. useNativeDriver → corre fuera del hilo JS
-// (60fps, no cuesta rendimiento del mapa).
-function SlideUp({ children, style }) {
-  const ty = useRef(new Animated.Value(36)).current;
-  const op = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(ty, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200, mass: 0.7 }),
-      Animated.timing(op, { toValue: 1, duration: 160, useNativeDriver: true }),
-    ]).start();
-  }, []);
-  return <Animated.View style={[style, { transform: [{ translateY: ty }], opacity: op }]}>{children}</Animated.View>;
-}
 
 export default function App() {
   const [token, setToken]       = useState(null);
@@ -3390,14 +3354,7 @@ export default function App() {
       )}
 
       {/* Visor de foto a pantalla completa */}
-      {photoView && (
-        <TouchableOpacity activeOpacity={1} style={styles.photoViewerOverlay} onPress={() => setPhotoView(null)}>
-          <Image source={{ uri: photoView.url }} style={styles.photoViewerImg} resizeMode="contain" />
-          <TouchableOpacity style={styles.photoViewerClose} onPress={() => setPhotoView(null)}>
-            <Feather name="x" size={26} color="#fff" />
-          </TouchableOpacity>
-        </TouchableOpacity>
-      )}
+      <PhotoViewer url={photoView?.url} onClose={() => setPhotoView(null)} />
     </View>
   );
 }
