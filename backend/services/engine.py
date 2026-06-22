@@ -502,7 +502,7 @@ async def _invoice_worker():
     """Emite las facturas PENDING contra el proveedor (stub o real) y guarda el
     PDF/XML en MinIO. Reintentos con backoff implícito (cada ciclo). Que una
     factura falle NO afecta la plata: el reparto en bolsas ya ocurrió."""
-    import invoicing
+    from services import invoicing
     logger.info(f"Worker de facturación iniciado — proveedor: {invoicing.provider_name()}")
     while True:
         try:

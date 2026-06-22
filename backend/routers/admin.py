@@ -62,7 +62,7 @@ async def invoice_pdf(invoice_id: str, token: str, db: AsyncSession = Depends(ge
         raise HTTPException(404, "Factura no encontrada")
     if inv.provider == "stub":
         # Stub: regeneramos el PDF al vuelo (válido y consistente con los datos)
-        import invoicing
+        from services import invoicing
         data = invoicing.render_invoice_pdf(inv)
     else:
         # Proveedor real (Factus): el PDF almacenado es el oficial
@@ -629,12 +629,12 @@ class BrandProfileBody(BaseModel):
 def _slug(s: str) -> str:
     return _re_model.sub(r'[^a-z0-9]+', '-', (s or '').lower()).strip('-')[:40] or secrets.token_hex(4)
 
-@router.get("/admin/brand-profiles")
+@router.get("/brand-profiles")
 async def admin_list_brand_profiles(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(ChargerBrandProfile).order_by(ChargerBrandProfile.display_name))).scalars().all()
     return {"profiles": [p.to_dict() for p in rows]}
 
-@router.post("/admin/brand-profiles")
+@router.post("/brand-profiles")
 async def admin_create_brand_profile(body: BrandProfileBody, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     pid = body.id or _slug(body.display_name)
     if await db.get(ChargerBrandProfile, pid):
@@ -649,7 +649,7 @@ async def admin_create_brand_profile(body: BrandProfileBody, _: User = Depends(r
     await db.commit()
     return bp.to_dict()
 
-@router.patch("/admin/brand-profiles/{pid}")
+@router.patch("/brand-profiles/{pid}")
 async def admin_update_brand_profile(pid: str, body: BrandProfileBody, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     bp = await db.get(ChargerBrandProfile, pid)
     if not bp:
@@ -661,7 +661,7 @@ async def admin_update_brand_profile(pid: str, body: BrandProfileBody, _: User =
     await db.commit()
     return bp.to_dict()
 
-@router.delete("/admin/brand-profiles/{pid}")
+@router.delete("/brand-profiles/{pid}")
 async def admin_delete_brand_profile(pid: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     bp = await db.get(ChargerBrandProfile, pid)
     if not bp:
@@ -676,7 +676,7 @@ async def admin_delete_brand_profile(pid: str, _: User = Depends(require_admin),
 _MODEL_MAX_PHOTOS = 2
 _MODEL_PHOTO_EXT  = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
-@router.post("/admin/brand-profiles/{pid}/photos")
+@router.post("/brand-profiles/{pid}/photos")
 async def admin_add_model_photo(pid: str, file: UploadFile = File(...), _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     bp = await db.get(ChargerBrandProfile, pid)
     if not bp:
@@ -700,7 +700,7 @@ async def admin_add_model_photo(pid: str, file: UploadFile = File(...), _: User 
     await db.commit()
     return photo.to_dict()
 
-@router.delete("/admin/brand-profiles/{pid}/photos/{photo_id}")
+@router.delete("/brand-profiles/{pid}/photos/{photo_id}")
 async def admin_delete_model_photo(pid: str, photo_id: str, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     photo = await db.get(ChargerModelPhoto, photo_id)
     if not photo or photo.model_id != pid:

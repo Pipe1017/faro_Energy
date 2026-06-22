@@ -112,7 +112,7 @@ async def my_session_receipt(session_id: int, token: str, db: AsyncSession = Dep
     from jose import jwt, JWTError
     from core.auth import SECRET_KEY, ALGORITHM
     from models import Invoice
-    import storage, invoicing
+    from services import storage, invoicing
     try:
         uid = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])["sub"]
     except (JWTError, KeyError):
@@ -212,7 +212,7 @@ async def wallet_refund_request(current_user: User = Depends(get_current_user), 
     if refundable <= 0:
         raise HTTPException(400, "No tienes saldo reembolsable.")
     try:
-        import emailer, os
+        import os; from services import emailer
         ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
         if ADMIN_EMAIL:
             subj = "Solicitud de devolución de saldo"
