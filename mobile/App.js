@@ -17,7 +17,6 @@ import { T, STATUS_COLOR } from './src/theme';
 import { API_URL, apiFetch, apiUpload } from './src/api';
 import { MEDELLIN, formatElapsed, IVA_RATE, PLATFORM_MARGIN } from './src/constants';
 import { AppCtx } from './src/context/AppContext';
-import { AdminScreen } from './src/screens/AdminScreen';
 import { KbSheet } from './src/hooks';
 import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
 import { FaroLogo } from './src/components/FaroLogo';
@@ -64,7 +63,6 @@ export default function App() {
   const [nequiForm, setNequiForm] = useState({ phone:'', holder_name:'', nickname:'' });
   const [savingMethod, setSavingMethod] = useState(false);   // bloquea doble-tap al guardar tarjeta/Nequi
   const [renameModal, setRenameModal]     = useState(null);
-  const [adminSummary, setAdminSummary]   = useState(null);
   const [sessionDetail, setSessionDetail] = useState(null); // sesión seleccionada para ver detalle
   const [ratePrompt, setRatePrompt]       = useState(null); // {sessionId, kwh, cost} → calificar al terminar la carga
   const [sessionsShown, setSessionsShown] = useState(5);    // paginación local (conductor)
@@ -380,7 +378,6 @@ export default function App() {
       apiFetch('/my-stats?period=week', {}, token).then(setMyStats).catch(() => {});  // solo para la gráfica de 7 días
     }
     if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
-    if (tab === 'admin')   { apiFetch('/admin/summary', {}, token).then(setAdminSummary).catch(() => {}); }
     if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); }
     if (tab === 'mapa' && externalChargers.length === 0) {
       apiFetch('/external-chargers', {}, token).then(d => setExternalChargers(d.chargers || [])).catch(() => {});
@@ -925,7 +922,6 @@ export default function App() {
   const charging    = chargers.filter(c => c.status === 'Charging').length;
   const offline     = chargers.filter(c => c.status === 'Offline').length;
   const isOwner     = user?.role === 'owner';
-  const isAdmin     = user?.role === 'admin';
 
   const filteredChargers = search.trim()
     ? chargers.filter(c =>
@@ -1246,7 +1242,7 @@ export default function App() {
   const myChargers = chargers.filter(c => c.owner_id === user?.id);
 
   // "Caja común" para las pantallas extraídas. Crece a medida que migramos más.
-  const ctx = { adminSummary };
+  const ctx = {};
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -1511,8 +1507,6 @@ export default function App() {
             </View>
           }
         />
-      ) : tab === 'admin' ? (
-        <AdminScreen />
       ) : tab === 'negocio' ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
 
@@ -2133,11 +2127,7 @@ export default function App() {
       {/* ── Barra de navegación inferior ── */}
       {!selectedCharger && !chargerPanel && !qrModal && !payMethodsModal && !addMethodModal && !paymentPending && !addDisbModal && !sessionModal && (
         <View style={styles.bottomBar}>
-          {(isAdmin ? [
-            { id: 'admin',  icon: 'activity',     label: 'Plataforma' },
-            { id: 'mapa',   icon: 'map-pin',       label: 'Mapa'       },
-            { id: 'lista',  icon: 'list',          label: 'Cargadores' },
-          ] : isOwner ? [
+          {(isOwner ? [
             { id: 'lista',   icon: 'zap',         label: 'Mis cargadores' },
             { id: 'mapa',    icon: 'map-pin',      label: 'Mapa'       },
             { id: 'negocio', icon: 'bar-chart-2',  label: 'Negocio'    },
