@@ -32,8 +32,9 @@ router = APIRouter()
 async def get_status(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Charger).options(selectinload(Charger.owner)).order_by(Charger.id))
     chargers = result.scalars().all()
-    # Ocultar del mapa los cargadores de dueños con la mensualidad suspendida.
-    visible = [c for c in chargers if c.owner is None or c.owner.subscription_active]
+    # Ocultar del mapa: archivados, y los de dueños con la mensualidad suspendida.
+    visible = [c for c in chargers
+               if not c.archived and (c.owner is None or c.owner.subscription_active)]
     return {
         "connected": list(connected_chargers.keys()),
         "total": len(visible),

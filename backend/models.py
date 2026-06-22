@@ -175,6 +175,9 @@ class Charger(Base):
     # Calificación discreta: contadores 👍/👎 (denormalizados para leer barato)
     rating_up: Mapped[int] = mapped_column(Integer, default=0)
     rating_down: Mapped[int] = mapped_column(Integer, default=0)
+    # Soft-delete: el dueño "elimina" → se archiva (desaparece del mapa y de su lista)
+    # pero se conserva el historial de cargas (sessions) por contabilidad.
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     owner: Mapped["User | None"] = relationship("User", back_populates="chargers")
     sessions: Mapped[list["Session"]] = relationship("Session", back_populates="charger")

@@ -92,7 +92,8 @@ async def my_chargers(
     if current_user.role != "owner":
         raise HTTPException(403, "Solo para dueños de cargadores")
     result = await db.execute(
-        select(Charger).where(Charger.owner_id == current_user.id).options(selectinload(Charger.owner))
+        select(Charger).where(Charger.owner_id == current_user.id, Charger.archived.isnot(True))
+                       .options(selectinload(Charger.owner))
     )
     chargers = result.scalars().all()
     return {"chargers": [c.to_dict() for c in chargers]}
@@ -277,15 +278,16 @@ async def delete_charger(
         raise HTTPException(403, "No es tu cargador")
     if charger.active_transaction:
         raise HTTPException(400, "Hay una sesión activa — detén la carga primero")
-    # Detener simulador si está corriendo
+    # Detener simulador y conexión OCPP
     sim_mgr.stop(charge_point_id)
-    # Limpiar conexión OCPP activa
     connected_chargers.pop(charge_point_id, None)
-    # Borrar dependientes que referencian al cargador (FK) antes de eliminarlo.
-    await db.execute(delete(ChargerPhoto).where(ChargerPhoto.charger_id == charge_point_id))
-    await db.delete(charger)
+    # SOFT-DELETE: archivar (no borrar). Así conservamos el historial de cargas
+    # (sessions tiene FK NOT NULL a chargers) y la contabilidad. Desaparece del mapa
+    # y de la lista del dueño porque esas consultas filtran archived.
+    charger.archived = True
+    charger.status = "Offline"
     await db.commit()
-    logger.info(f"Cargador {charge_point_id} eliminado por {current_user.email}")
+    logger.info(f"Cargador {charge_point_id} archivado por {current_user.email}")
     return {"ok": True}
 
 class PauseBody(BaseModel):

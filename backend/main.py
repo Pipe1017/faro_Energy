@@ -84,6 +84,7 @@ async def startup():
         ("ALTER TABLE chargers ADD COLUMN current_soc FLOAT",                                         "current_soc en chargers"),
         ("ALTER TABLE charger_brand_profiles ADD COLUMN description TEXT",                             "description en charger_brand_profiles"),
         ("ALTER TABLE charger_brand_profiles ADD COLUMN recommendations TEXT",                        "recommendations en charger_brand_profiles"),
+        ("ALTER TABLE chargers ADD COLUMN archived BOOLEAN DEFAULT FALSE",                            "archived en chargers"),
     ]:
         try:
             async with engine.begin() as conn:
