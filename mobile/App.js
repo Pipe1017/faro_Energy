@@ -1339,8 +1339,8 @@ export default function App() {
             { id: 'mapa',    icon: 'map-pin',      label: 'Mapa'       },
             { id: 'negocio', icon: 'bar-chart-2',  label: 'Negocio'    },
           ] : [
-            { id: 'mapa',   icon: 'map-pin', label: 'Mapa'     },
-            { id: 'lista',  icon: 'list',    label: 'Lista'    },
+            { id: 'mapa',   icon: 'map-pin', label: 'Mapa'      },
+            { id: 'lista',  icon: 'compass', label: 'Descubre' },
             { id: 'miuso',  icon: 'user',    label: 'Mi uso'   },
           ]).map(t => (
             <TouchableOpacity key={t.id} style={styles.bottomTab} onPress={() => setTab(t.id)}>
