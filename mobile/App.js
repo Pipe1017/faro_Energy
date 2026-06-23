@@ -15,7 +15,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 // ── Módulos extraídos (ver src/) ──
 import { T, STATUS_COLOR } from './src/theme';
 import { API_URL, apiFetch, apiUpload } from './src/api';
-import { MEDELLIN, formatElapsed, IVA_RATE, PLATFORM_MARGIN } from './src/constants';
+import { MEDELLIN, formatElapsed, IVA_RATE, PLATFORM_MARGIN, CHARGER_ICONS } from './src/constants';
 import { AppCtx } from './src/context/AppContext';
 import { MiUsoScreen } from './src/screens/MiUsoScreen';
 import { NegocioScreen } from './src/screens/NegocioScreen';
@@ -726,14 +726,15 @@ export default function App() {
 
   // Abre el modal unificado para AGREGAR (en blanco, costo por defecto)
   const openNewCharger = () => {
-    setChargerForm({ id: null, location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2',
+    setChargerForm({ id: null, name: '', icon: '', location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2',
       price_per_kwh: '', peak_per_kwh: '', cost_per_kwh: '800', brand_profile_id: null });
     setAddChargerModal(true);
   };
   // Abre el MISMO modal para EDITAR (precios mostrados como FINAL, IVA incl.)
   const openEditCharger = (c) => {
     setChargerForm({
-      id: c.id, location: c.location || '', lat: String(c.lat ?? ''), lng: String(c.lng ?? ''),
+      id: c.id, name: c.name || '', icon: c.icon || '',
+      location: c.location || '', lat: String(c.lat ?? ''), lng: String(c.lng ?? ''),
       power_kw: String(c.power_kw ?? ''), connector_type: c.connector_type || 'Type 2',
       price_per_kwh: String(c.price_per_kwh ? Math.round(c.price_per_kwh * (1 + IVA_RATE)) : ''),
       peak_per_kwh: String(c.peak_price_per_kwh ? Math.round(c.peak_price_per_kwh * (1 + IVA_RATE)) : ''),
@@ -757,6 +758,7 @@ export default function App() {
     try {
       if (f.id) {
         await apiFetch(`/chargers/${f.id}`, { method: 'PATCH', body: JSON.stringify({
+          name: (f.name || '').trim(), icon: f.icon || '',
           location: f.location.trim(), lat: parseFloat(f.lat), lng: parseFloat(f.lng),
           power_kw: parseFloat(f.power_kw), connector_type: f.connector_type,
           price_per_kwh: base, cost_per_kwh: cost,
@@ -766,6 +768,7 @@ export default function App() {
         Alert.alert('Guardado', `El conductor pagará $${finalPrice.toLocaleString('es-CO')}/kWh (IVA incl.).`);
       } else {
         const data = await apiFetch('/chargers', { method: 'POST', body: JSON.stringify({
+          name: (f.name || '').trim() || null, icon: f.icon || null,
           location: f.location.trim(), lat: parseFloat(f.lat), lng: parseFloat(f.lng),
           power_kw: parseFloat(f.power_kw), connector_type: f.connector_type,
           price_per_kwh: base, cost_per_kwh: cost, brand_profile_id: f.brand_profile_id,
@@ -1101,7 +1104,7 @@ export default function App() {
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <View style={[styles.dot, { backgroundColor: color, width: 10, height: 10, borderRadius: 5 }]} />
-                  <Text style={styles.mapPanelId}>{c.id}</Text>
+                  <Text style={styles.mapPanelId} numberOfLines={1}>{c.icon ? c.icon + ' ' : ''}{c.name || c.id}</Text>
                   {mine && <View style={styles.mineBadge}><Text style={styles.mineText}>Mi cargador</Text></View>}
                 </View>
                 <Text style={styles.mapPanelLocation}>{c.location}</Text>
@@ -1419,7 +1422,7 @@ export default function App() {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={[styles.dot, { backgroundColor: color, width: 10, height: 10, borderRadius: 5 }]} />
-                    <Text style={styles.mapPanelId}>{c.id}</Text>
+                    <Text style={styles.mapPanelId} numberOfLines={1}>{c.icon ? c.icon + ' ' : ''}{c.name || c.id}</Text>
                     {mine && <View style={styles.mineBadge}><Text style={styles.mineText}>Mi cargador</Text></View>}
                   </View>
                   <Text style={styles.mapPanelLocation}>{c.location}</Text>
@@ -1847,6 +1850,25 @@ export default function App() {
               <Text style={styles.mapPanelLocation}>{chargerForm.id ? 'Edita los datos y el precio de tu cargador.' : 'Te asignaremos un ID único (FARO-XXXX) y la URL para configurar tu equipo.'}</Text>
 
               <View style={{ gap: 10, marginTop: 16 }}>
+                {/* Nombre personalizado + ícono (set curado) */}
+                <View>
+                  <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>Nombre (opcional)</Text>
+                  <TextInput style={styles.input} placeholder="Ej: Casa, Torre 2, Café del parque…"
+                    placeholderTextColor={T.textMuted} value={chargerForm.name}
+                    onChangeText={v => setChargerForm(f => ({ ...f, name: v }))} maxLength={28} />
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {CHARGER_ICONS.map(ic => (
+                      <TouchableOpacity key={ic}
+                        onPress={() => setChargerForm(f => ({ ...f, icon: f.icon === ic ? '' : ic }))}
+                        style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: chargerForm.icon === ic ? T.greenFaint : T.surface,
+                          borderWidth: 1, borderColor: chargerForm.icon === ic ? T.greenDark : T.cardBorder }}>
+                        <Text style={{ fontSize: 20 }}>{ic}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
                 {/* Modelo / referencia del catálogo (con foto, descripción y recomendaciones) */}
                 {brandProfiles.length > 0 && (() => {
                   const sel = brandProfiles.find(b => b.id === chargerForm.brand_profile_id);

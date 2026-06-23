@@ -12,7 +12,7 @@ import { useApp } from '../context/AppContext';
 export function OwnerCard({ item }) {
   const {
     chargerPhotos, photoBusy, addPhoto, removePhoto, photoUri, setPhotoView,
-    togglePause, deleteCharger,
+    togglePause, deleteCharger, openEditCharger,
   } = useApp();
 
   const color      = STATUS_COLOR[item.status] || T.offline;
@@ -28,9 +28,11 @@ export function OwnerCard({ item }) {
     <View style={[styles.card, styles.cardMine]}>
       <View style={styles.cardHeader}>
         <View style={[styles.dot, { backgroundColor: color }]} />
-        <Text style={styles.chargerId}>{item.id}</Text>
+        {item.icon ? <Text style={{ fontSize: 16, marginRight: 4 }}>{item.icon}</Text> : null}
+        <Text style={styles.chargerId} numberOfLines={1}>{item.name || item.id}</Text>
         <Text style={[styles.statusText, { color, fontSize: 12 }]}>{item.status}</Text>
       </View>
+      {item.name ? <Text style={{ color: T.textMuted, fontSize: 11, marginTop: -2, marginBottom: 2 }}>{item.id}</Text> : null}
       <Text style={styles.location}>{item.location}</Text>
       <View style={styles.specsRow}>
         {item.power_kw       && <View style={styles.specChip}><Text style={styles.specText}>⚡ {item.power_kw} kW</Text></View>}
@@ -93,6 +95,12 @@ export function OwnerCard({ item }) {
 
       {/* Acciones */}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, borderTopWidth: 1, borderTopColor: T.cardBorder, paddingTop: 10 }}>
+        <TouchableOpacity
+          style={[styles.btn, { flex: 1, marginTop: 0, paddingVertical: 9, backgroundColor: T.greenFaint, borderWidth: 1, borderColor: T.greenDark }]}
+          onPress={() => openEditCharger(item)}>
+          <Feather name="edit-2" size={13} color={T.green} />
+          <Text style={[styles.btnText, { fontSize: 12, color: T.green }]}>Editar</Text>
+        </TouchableOpacity>
         {item.status !== 'Offline' && item.status !== 'Charging' && (
           <TouchableOpacity
             style={[styles.btn, { flex: 1, marginTop: 0, paddingVertical: 9,

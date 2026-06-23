@@ -138,6 +138,8 @@ class Charger(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)  # OCPP id, e.g. FARO-7K2M
     owner_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)   # nombre personalizado del dueño
+    icon: Mapped[str | None] = mapped_column(String, nullable=True)   # emoji/ícono elegido (set curado)
     location: Mapped[str] = mapped_column(String, default="Sin ubicación")
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -189,6 +191,8 @@ class Charger(Base):
         viendo lo suyo, sí incluye el detalle de la sesión."""
         d = {
             "id": self.id,
+            "name": self.name,
+            "icon": self.icon,
             "owner": self.owner.name if self.owner else None,
             "owner_id": self.owner_id,
             "location": self.location,

@@ -4,6 +4,9 @@ export const MEDELLIN = { latitude: 6.2100, longitude: -75.5700, latitudeDelta: 
 export const IVA_RATE = 0.19;
 export const PLATFORM_MARGIN = 0.15;
 
+// Set CURADO de íconos para el cargador (elegante y simple — no el teclado de emojis).
+export const CHARGER_ICONS = ['⚡', '🏠', '🏢', '🅿️', '🔌', '🚗', '☕', '🛒', '🏬', '🌳', '🏨', '🍽️'];
+
 export function formatElapsed(ms) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);

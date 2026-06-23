@@ -138,6 +138,8 @@ class AddChargerBody(BaseModel):
     price_per_kwh: float
     cost_per_kwh: float = 0.0
     brand_profile_id: str | None = None   # marca elegida por el dueño (opcional)
+    name: str | None = None               # nombre personalizado
+    icon: str | None = None               # emoji/ícono del set curado
     id: str | None = None                 # legacy: si no llega, el sistema lo genera
 
 @router.post("/chargers")
@@ -167,6 +169,7 @@ async def add_charger(
         power_kw=body.power_kw, connector_type=body.connector_type,
         price_per_kwh=body.price_per_kwh, cost_per_kwh=body.cost_per_kwh,
         brand_profile_id=body.brand_profile_id,
+        name=(body.name or None), icon=(body.icon or None),
         status="Offline",
     )
     db.add(charger)
@@ -192,6 +195,10 @@ class EditChargerBody(BaseModel):
     peak_price_per_kwh: float | None = None   # None NO lo quita; usar clear_peak
     clear_peak: bool = False                   # True = quitar tarifa pico
     cost_per_kwh: float | None = None
+    name: str | None = None
+    icon: str | None = None
+    clear_name: bool = False                   # True = quitar nombre
+    clear_icon: bool = False                   # True = quitar ícono
 
 
 @router.patch("/chargers/{charge_point_id}")
@@ -210,6 +217,10 @@ async def edit_charger(charge_point_id: str, body: EditChargerBody,
     if changes_price and charger.active_transaction:
         raise HTTPException(409, "No puedes cambiar el precio mientras un conductor está cargando")
 
+    if body.clear_name:                 charger.name = None
+    elif body.name is not None:         charger.name = body.name.strip() or None
+    if body.clear_icon:                 charger.icon = None
+    elif body.icon is not None:         charger.icon = body.icon or None
     if body.location is not None:       charger.location = body.location.strip()
     if body.lat is not None:            charger.lat = body.lat
     if body.lng is not None:            charger.lng = body.lng
