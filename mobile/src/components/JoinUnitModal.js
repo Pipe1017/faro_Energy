@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert } fro
 import { Feather } from '@expo/vector-icons';
 import { T } from '../theme';
 import { styles } from '../styles';
+import { KbSheet } from '../hooks';
 import { useApp } from '../context/AppContext';
 
 // El conductor se une a una unidad con el código que le compartió el dueño.
@@ -25,6 +26,7 @@ export function JoinUnitModal() {
   return (
     <View style={styles.modalOverlay}>
       <TouchableOpacity style={{ flex: 1 }} onPress={() => setJoinUnitModal(false)} activeOpacity={1} />
+      <KbSheet>
       <View style={styles.modal}>
         <View style={styles.mapPanelHandle} />
         <View style={styles.mapPanelHeader}>
@@ -43,6 +45,7 @@ export function JoinUnitModal() {
           {busy ? <ActivityIndicator size="small" color="#fdfbf7" /> : <Text style={styles.btnText}>Unirme</Text>}
         </TouchableOpacity>
       </View>
+      </KbSheet>
     </View>
   );
 }

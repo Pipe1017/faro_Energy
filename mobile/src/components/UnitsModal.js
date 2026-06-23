@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator,
 import { Feather } from '@expo/vector-icons';
 import { T } from '../theme';
 import { styles } from '../styles';
+import { KbSheet } from '../hooks';
 import { useApp } from '../context/AppContext';
 
 // Gestión de Unidades (cargadores privados) del dueño: crear, ver código de
@@ -33,19 +34,20 @@ export function UnitsModal() {
   return (
     <View style={styles.modalOverlay}>
       <TouchableOpacity style={{ flex: 1 }} onPress={() => setUnitsModal(false)} activeOpacity={1} />
-      <View style={[styles.modal, { maxHeight: '85%' }]}>
-        <View style={styles.mapPanelHandle} />
-        <View style={styles.mapPanelHeader}>
-          <View>
-            <Text style={styles.modalTitle}>Unidades</Text>
-            <Text style={styles.mapPanelLocation}>Cargadores privados: solo los miembros pueden cargar.</Text>
+      <KbSheet>
+        <ScrollView style={{ maxHeight: '100%', flexGrow: 0 }} contentContainerStyle={styles.modal}
+          keyboardShouldPersistTaps="handled" bounces={false}>
+          <View style={styles.mapPanelHandle} />
+          <View style={styles.mapPanelHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Unidades</Text>
+              <Text style={styles.mapPanelLocation}>Cargadores privados: solo los miembros pueden cargar.</Text>
+            </View>
+            <TouchableOpacity onPress={() => setUnitsModal(false)} style={{ padding: 4 }}>
+              <Feather name="x" size={20} color={T.textMuted} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => setUnitsModal(false)} style={{ padding: 4 }}>
-            <Feather name="x" size={20} color={T.textMuted} />
-          </TouchableOpacity>
-        </View>
 
-        <ScrollView style={{ marginTop: 8 }}>
           {/* Crear unidad */}
           <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
             <TextInput style={[styles.input, { flex: 1, marginTop: 0 }]} placeholder="Nueva unidad (ej: Torre 2)"
@@ -117,7 +119,7 @@ export function UnitsModal() {
             );
           })}
         </ScrollView>
-      </View>
+      </KbSheet>
     </View>
   );
 }
