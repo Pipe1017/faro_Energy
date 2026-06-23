@@ -8,7 +8,7 @@ import { OwnerCard } from '../components/OwnerCard';
 
 // Pantalla "Mis cargadores" (dueño): lista de sus cargadores + botón Agregar.
 export function ListScreen() {
-  const { myChargers, refreshing, fetchStatus, openNewCharger, serverOk, archivedChargers, restoreCharger } = useApp();
+  const { myChargers, refreshing, fetchStatus, openNewCharger, serverOk, archivedChargers, restoreCharger, units, setUnitsModal } = useApp();
   return (
     <FlatList
       data={myChargers}
@@ -39,12 +39,20 @@ export function ListScreen() {
       ListHeaderComponent={(
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <Text style={styles.sectionTitle}>Mis cargadores</Text>
-          <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.greenFaint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: T.greenDark }}
-            onPress={openNewCharger}>
-            <Feather name="plus" size={13} color={T.green} />
-            <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Agregar</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.surface, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 6, borderWidth: 1, borderColor: T.cardBorder }}
+              onPress={() => setUnitsModal(true)}>
+              <Feather name="home" size={13} color={T.textSec} />
+              <Text style={{ color: T.textSec, fontSize: 12, fontWeight: '700' }}>Unidades{units?.length ? ` (${units.length})` : ''}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: T.greenFaint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: T.greenDark }}
+              onPress={openNewCharger}>
+              <Feather name="plus" size={13} color={T.green} />
+              <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Agregar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       ListEmptyComponent={

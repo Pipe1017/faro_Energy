@@ -140,6 +140,7 @@ class AddChargerBody(BaseModel):
     brand_profile_id: str | None = None   # marca elegida por el dueño (opcional)
     name: str | None = None               # nombre personalizado
     icon: str | None = None               # emoji/ícono del set curado
+    unit_id: str | None = None            # unidad (privado) opcional
     id: str | None = None                 # legacy: si no llega, el sistema lo genera
 
 @router.post("/chargers")
@@ -162,6 +163,10 @@ async def add_charger(
 
     if body.brand_profile_id and not await db.get(ChargerBrandProfile, body.brand_profile_id):
         raise HTTPException(400, "Marca no encontrada en el catálogo")
+    if body.unit_id:
+        unit = await db.get(Unit, body.unit_id)
+        if not unit or unit.owner_id != current_user.id:
+            raise HTTPException(400, "Unidad no válida")
 
     charger = Charger(
         id=charger_id, owner_id=current_user.id,
@@ -170,6 +175,7 @@ async def add_charger(
         price_per_kwh=body.price_per_kwh, cost_per_kwh=body.cost_per_kwh,
         brand_profile_id=body.brand_profile_id,
         name=(body.name or None), icon=(body.icon or None),
+        unit_id=(body.unit_id or None),
         status="Offline",
     )
     db.add(charger)

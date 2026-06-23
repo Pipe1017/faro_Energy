@@ -12,6 +12,7 @@ export function MiUsoScreen() {
     wallet, myUsage, reservations, sessionsShown, paymentMethods, token,
     setRecargaAmount, setRecargaModal, requestRefund, cancelReservation,
     setSessionDetail, setSessionsShown, setRenameModal, fetchPaymentMethods, setAddMethodModal,
+    setJoinUnitModal,
   } = useApp();
 
   return (
@@ -189,6 +190,14 @@ export function MiUsoScreen() {
           <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setAddMethodModal('card')}>
             <Feather name="credit-card" size={14} color="#fdfbf7" />
             <Text style={styles.btnText}>Agregar tarjeta</Text>
+          </TouchableOpacity>
+
+          {/* Unirse a una unidad (cargadores privados) */}
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, paddingVertical: 10 }}
+            onPress={() => setJoinUnitModal(true)}>
+            <Feather name="key" size={14} color={T.green} />
+            <Text style={{ color: T.green, fontSize: 13, fontWeight: '600' }}>¿Tienes un código de unidad? Unirme</Text>
           </TouchableOpacity>
 
           {myUsage.sessions?.length === 0 && (

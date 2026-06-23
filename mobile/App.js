@@ -30,6 +30,8 @@ import { AuthScreen } from './src/components/AuthScreen';
 import { BootSplash } from './src/components/BootSplash';
 import { SlideUp } from './src/components/SlideUp';
 import { PhotoViewer } from './src/components/PhotoViewer';
+import { UnitsModal } from './src/components/UnitsModal';
+import { JoinUnitModal } from './src/components/JoinUnitModal';
 import { styles } from './src/styles';
 
 export default function App() {
@@ -40,6 +42,10 @@ export default function App() {
 
   const [chargers, setChargers]     = useState([]);
   const [archivedChargers, setArchivedChargers] = useState([]);  // dados de baja (dueño)
+  const [units, setUnits]           = useState([]);   // unidades del dueño
+  const [myUnitIds, setMyUnitIds]   = useState([]);   // unidades a las que pertenece el conductor
+  const [unitsModal, setUnitsModal] = useState(false);
+  const [joinUnitModal, setJoinUnitModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const [earnings, setEarnings]         = useState(null);
@@ -384,8 +390,8 @@ export default function App() {
       apiFetch('/my-stats?period=week', {}, token).then(setMyStats).catch(() => {});  // solo para la gráfica de 7 días
     }
     if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
-    if (tab === 'lista' && isOwner) { fetchArchivedChargers(); }
-    if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); }
+    if (tab === 'lista' && isOwner) { fetchArchivedChargers(); fetchUnits(); }
+    if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); fetchMemberships(); }
     if (tab === 'mapa' && externalChargers.length === 0) {
       apiFetch('/external-chargers', {}, token).then(d => setExternalChargers(d.chargers || [])).catch(() => {});
     }
@@ -727,7 +733,7 @@ export default function App() {
   // Abre el modal unificado para AGREGAR (en blanco, costo por defecto)
   const openNewCharger = () => {
     setChargerForm({ id: null, name: '', icon: '', location: '', lat: '', lng: '', power_kw: '', connector_type: 'Type 2',
-      price_per_kwh: '', peak_per_kwh: '', cost_per_kwh: '800', brand_profile_id: null });
+      price_per_kwh: '', peak_per_kwh: '', cost_per_kwh: '800', brand_profile_id: null, unit_id: null });
     setAddChargerModal(true);
   };
   // Abre el MISMO modal para EDITAR (precios mostrados como FINAL, IVA incl.)
@@ -739,6 +745,7 @@ export default function App() {
       price_per_kwh: String(c.price_per_kwh ? Math.round(c.price_per_kwh * (1 + IVA_RATE)) : ''),
       peak_per_kwh: String(c.peak_price_per_kwh ? Math.round(c.peak_price_per_kwh * (1 + IVA_RATE)) : ''),
       cost_per_kwh: String(c.cost_per_kwh ?? ''), brand_profile_id: c.brand_profile_id || null,
+      unit_id: c.unit_id || null,
     });
     setAddChargerModal(true);
   };
@@ -759,6 +766,7 @@ export default function App() {
       if (f.id) {
         await apiFetch(`/chargers/${f.id}`, { method: 'PATCH', body: JSON.stringify({
           name: (f.name || '').trim(), icon: f.icon || '',
+          unit_id: f.unit_id || null, clear_unit: !f.unit_id,
           location: f.location.trim(), lat: parseFloat(f.lat), lng: parseFloat(f.lng),
           power_kw: parseFloat(f.power_kw), connector_type: f.connector_type,
           price_per_kwh: base, cost_per_kwh: cost,
@@ -768,7 +776,7 @@ export default function App() {
         Alert.alert('Guardado', `El conductor pagará $${finalPrice.toLocaleString('es-CO')}/kWh (IVA incl.).`);
       } else {
         const data = await apiFetch('/chargers', { method: 'POST', body: JSON.stringify({
-          name: (f.name || '').trim() || null, icon: f.icon || null,
+          name: (f.name || '').trim() || null, icon: f.icon || null, unit_id: f.unit_id || null,
           location: f.location.trim(), lat: parseFloat(f.lat), lng: parseFloat(f.lng),
           power_kw: parseFloat(f.power_kw), connector_type: f.connector_type,
           price_per_kwh: base, cost_per_kwh: cost, brand_profile_id: f.brand_profile_id,
@@ -789,6 +797,22 @@ export default function App() {
     try { const d = await apiFetch('/my-chargers/archived', {}, token); setArchivedChargers(d.chargers || []); }
     catch {}
   };
+
+  // ── Unidades (cargadores privados) ──────────────────────────────────────────
+  const fetchUnits = async () => {
+    try { const d = await apiFetch('/my-units', {}, token); setUnits(d.units || []); } catch {}
+  };
+  const fetchMemberships = async () => {
+    try { const d = await apiFetch('/my-memberships', {}, token); setMyUnitIds(d.unit_ids || []); } catch {}
+  };
+  const createUnit  = async (name) => { await apiFetch('/units', { method: 'POST', body: JSON.stringify({ name }) }, token); fetchUnits(); };
+  const addMember   = async (unitId, email) => { await apiFetch(`/units/${unitId}/members`, { method: 'POST', body: JSON.stringify({ email }) }, token); fetchUnits(); };
+  const removeMember = async (unitId, userId) => { await apiFetch(`/units/${unitId}/members/${userId}`, { method: 'DELETE' }, token); fetchUnits(); };
+  const deleteUnit  = (u) => Alert.alert('Borrar unidad', `¿Borrar "${u.name}"? Sus cargadores volverán a públicos.`, [
+    { text: 'Cancelar' },
+    { text: 'Borrar', style: 'destructive', onPress: async () => { try { await apiFetch(`/units/${u.id}`, { method: 'DELETE' }, token); fetchUnits(); fetchStatus(); } catch (e) { Alert.alert('Error', e.message); } } },
+  ]);
+  const joinUnit = async (code) => { const r = await apiFetch('/units/join', { method: 'POST', body: JSON.stringify({ code }) }, token); fetchMemberships(); fetchStatus(); return r; };
 
   // "Dar de baja" = archivar (soft-delete): sale del mapa y de la lista activa, se
   // conserva todo (ID, historial) y queda minimizado al final para reactivar.
@@ -1017,6 +1041,9 @@ export default function App() {
     // Lista / Mis cargadores (dueño) + OwnerCard
     myChargers, refreshing, fetchStatus, openNewCharger, serverOk,
     archivedChargers, restoreCharger,
+    // Unidades
+    units, fetchUnits, createUnit, addMember, removeMember, deleteUnit,
+    unitsModal, setUnitsModal, myUnitIds, joinUnit, joinUnitModal, setJoinUnitModal,
     editingPrice, newPrice, setNewPrice, setEditingPrice, savePrice, openEditCharger,
     chargerPhotos, photoBusy, addPhoto, removePhoto, photoUri, setPhotoView,
     togglePause, deleteCharger, fetchEarnings,
@@ -1092,6 +1119,7 @@ export default function App() {
         const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.19) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
+        const locked   = c.private && c.owner_id !== user?.id && !myUnitIds.includes(c.unit_id);
         const myRes    = reservations.find(r => r.charger_id === c.id && r.status === 'active');
         const isResMine  = c.status === 'Reserved' && !!myRes;
         const isResOther = c.status === 'Reserved' && !myRes;
@@ -1197,7 +1225,19 @@ export default function App() {
                 <Text style={[styles.sessionLabel, { textAlign: 'center' }]}>Separado por otro conductor</Text>
               </View>
             )}
-            {!isOwner && (
+            {!isOwner && locked && (
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: T.cardBorder, marginBottom: 8 }}>
+                  <Feather name="lock" size={14} color={T.textMuted} />
+                  <Text style={{ color: T.textSec, fontSize: 12, flex: 1 }}>Privado · solo residentes de la unidad pueden cargar.</Text>
+                </View>
+                <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => setJoinUnitModal(true)}>
+                  <Feather name="key" size={14} color="#fdfbf7" />
+                  <Text style={styles.btnText}>Unirme con código</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {!isOwner && !locked && (
               <View style={styles.modalActions}>
                 {(isAvail || isResMine) && (
                   <TouchableOpacity style={[styles.btn, styles.btnStart, { flex: 2 }]} onPress={() => { setSelectedCharger(null); simulateQrScan(c); }}>
@@ -1404,6 +1444,7 @@ export default function App() {
         const priceUser = (c.price_per_kwh_now ?? c.price_per_kwh) ? Math.round((c.price_per_kwh_now ?? c.price_per_kwh) * 1.19) : null;
         const isAvail  = c.status === 'Available';
         const isCharg  = c.status === 'Charging';
+        const locked   = c.private && c.owner_id !== user?.id && !myUnitIds.includes(c.unit_id);
         const myRes    = reservations.find(r => r.charger_id === c.id && r.status === 'active');
         const isResMine  = c.status === 'Reserved' && !!myRes;
         const isResOther = c.status === 'Reserved' && !myRes;
@@ -1537,8 +1578,22 @@ export default function App() {
                 </View>
               )}
 
+              {/* Acceso privado: bloqueado para no-miembros */}
+              {!isOwner && locked && (
+                <View style={{ marginBottom: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: T.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: T.cardBorder, marginBottom: 10 }}>
+                    <Feather name="lock" size={15} color={T.textMuted} />
+                    <Text style={{ color: T.textSec, fontSize: 12.5, flex: 1 }}>Privado · solo residentes de la unidad pueden cargar aquí.</Text>
+                  </View>
+                  <TouchableOpacity style={[styles.btn, styles.btnStart]} onPress={() => setJoinUnitModal(true)}>
+                    <Feather name="key" size={15} color="#fdfbf7" />
+                    <Text style={styles.btnText}>Unirme con código</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Acciones conductor */}
-              {!isOwner && (
+              {!isOwner && !locked && (
                 <View style={styles.mapPanelActions}>
                   {(isAvail || isResMine) && (
                     <TouchableOpacity
@@ -1867,6 +1922,32 @@ export default function App() {
                       </TouchableOpacity>
                     ))}
                   </View>
+                </View>
+
+                {/* Acceso: público o privado (unidad) */}
+                <View>
+                  <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>Acceso</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    <TouchableOpacity
+                      style={[styles.roleBtn, !chargerForm.unit_id && styles.roleBtnActive]}
+                      onPress={() => setChargerForm(f => ({ ...f, unit_id: null }))}>
+                      <Text style={[styles.roleBtnText, !chargerForm.unit_id && styles.roleBtnTextActive]}>Público</Text>
+                    </TouchableOpacity>
+                    {units.map(u => (
+                      <TouchableOpacity key={u.id}
+                        style={[styles.roleBtn, chargerForm.unit_id === u.id && styles.roleBtnActive]}
+                        onPress={() => setChargerForm(f => ({ ...f, unit_id: u.id }))}>
+                        <Text style={[styles.roleBtnText, chargerForm.unit_id === u.id && styles.roleBtnTextActive]}>🏠 {u.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 4 }}>
+                    {units.length === 0
+                      ? 'Crea una unidad en "Mis cargadores → Unidades" para hacer el cargador privado.'
+                      : chargerForm.unit_id
+                        ? 'Privado: solo los miembros de la unidad podrán cargar aquí.'
+                        : 'Público: cualquier conductor puede cargar.'}
+                  </Text>
                 </View>
 
                 {/* Modelo / referencia del catálogo (con foto, descripción y recomendaciones) */}
@@ -2364,6 +2445,10 @@ export default function App() {
           </View>
         </View>
       )}
+
+      {/* Unidades (dueño) y unirse a unidad (conductor) */}
+      {unitsModal && <UnitsModal />}
+      {joinUnitModal && <JoinUnitModal />}
 
       {/* Visor de foto a pantalla completa */}
       <PhotoViewer url={photoView?.url} onClose={() => setPhotoView(null)} />
