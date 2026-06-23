@@ -16,7 +16,7 @@ from core.auth import hash_password, verify_password
 import services.sim as sim_mgr
 from core.config import ALLOWED_ORIGINS, SEED_OWNERS, SEED_CHARGERS, SEED_BRAND_PROFILES, SEED_PASSWORD, SEED_DEMO_USERS
 from services.engine import _charge_worker, _offline_watcher, _settlement_worker, _backfill_ledger, _reservation_worker, _invoice_worker
-from routers import ocpp, public, auth as auth_router, chargers, reservations, driver, owner, admin
+from routers import ocpp, public, auth as auth_router, chargers, reservations, driver, owner, admin, units
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -87,6 +87,7 @@ async def startup():
         ("ALTER TABLE chargers ADD COLUMN archived BOOLEAN DEFAULT FALSE",                            "archived en chargers"),
         ("ALTER TABLE chargers ADD COLUMN name TEXT",                                                 "name en chargers"),
         ("ALTER TABLE chargers ADD COLUMN icon TEXT",                                                 "icon en chargers"),
+        ("ALTER TABLE chargers ADD COLUMN unit_id TEXT",                                              "unit_id en chargers"),
     ]:
         try:
             async with engine.begin() as conn:
@@ -232,3 +233,4 @@ app.include_router(reservations.router)
 app.include_router(driver.router)
 app.include_router(owner.router)
 app.include_router(admin.router)
+app.include_router(units.router)

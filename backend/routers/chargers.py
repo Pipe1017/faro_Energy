@@ -14,7 +14,7 @@ from ocpp.v16.enums import AvailabilityType
 from core.database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
-                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerPhoto, ChargerModelPhoto)
+                    PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerPhoto, ChargerModelPhoto, Unit)
 from core.auth import get_current_user, hash_password, verify_password, create_token
 from services import storage
 import services.wompi as wompi_svc
@@ -199,6 +199,8 @@ class EditChargerBody(BaseModel):
     icon: str | None = None
     clear_name: bool = False                   # True = quitar nombre
     clear_icon: bool = False                   # True = quitar ícono
+    unit_id: str | None = None                 # asignar a una unidad (privado)
+    clear_unit: bool = False                   # True = hacerlo público
 
 
 @router.patch("/chargers/{charge_point_id}")
@@ -221,6 +223,12 @@ async def edit_charger(charge_point_id: str, body: EditChargerBody,
     elif body.name is not None:         charger.name = body.name.strip() or None
     if body.clear_icon:                 charger.icon = None
     elif body.icon is not None:         charger.icon = body.icon or None
+    if body.clear_unit:                 charger.unit_id = None
+    elif body.unit_id is not None:
+        unit = await db.get(Unit, body.unit_id)
+        if not unit or unit.owner_id != current_user.id:
+            raise HTTPException(400, "Unidad no válida")
+        charger.unit_id = body.unit_id
     if body.location is not None:       charger.location = body.location.strip()
     if body.lat is not None:            charger.lat = body.lat
     if body.lng is not None:            charger.lng = body.lng

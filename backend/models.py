@@ -180,6 +180,8 @@ class Charger(Base):
     # Soft-delete: el dueño "elimina" → se archiva (desaparece del mapa y de su lista)
     # pero se conserva el historial de cargas (sessions) por contabilidad.
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Unidad (privado): si tiene unit_id, solo los miembros de esa unidad pueden cargar.
+    unit_id: Mapped[str | None] = mapped_column(String, ForeignKey("units.id"), nullable=True, index=True)
 
     owner: Mapped["User | None"] = relationship("User", back_populates="chargers")
     sessions: Mapped[list["Session"]] = relationship("Session", back_populates="charger")
@@ -200,6 +202,8 @@ class Charger(Base):
             "lng": self.lng,
             "status": self.status,
             "archived": bool(self.archived),
+            "unit_id": self.unit_id,
+            "private": self.unit_id is not None,
             "model": self.model,
             "vendor": self.vendor,
             "brand_profile_id": self.brand_profile_id,
@@ -249,6 +253,47 @@ class ChargerPhoto(Base):
         # público (sin token) para que el componente <Image> pueda cargarlo por URL.
         return {"id": self.id, "charger_id": self.charger_id,
                 "url": f"/chargers/{self.charger_id}/photos/{self.id}"}
+
+
+class Unit(Base):
+    """Unidad residencial (conjunto/edificio) del dueño: agrupa cargadores PRIVADOS y
+    su lista de miembros (los únicos que pueden cargar en esos cargadores)."""
+    __tablename__ = "units"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    owner_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String)
+    join_code: Mapped[str] = mapped_column(String, unique=True, index=True)  # código de invitación
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 default=lambda: datetime.now(timezone.utc))
+
+    members: Mapped[list["UnitMember"]] = relationship(
+        "UnitMember", lazy="selectin", cascade="all, delete-orphan")
+
+    def to_dict(self, chargers_count: int = 0) -> dict:
+        return {
+            "id": self.id, "name": self.name, "join_code": self.join_code,
+            "members_count": len(self.members), "chargers_count": chargers_count,
+            "members": [m.to_dict() for m in self.members],
+        }
+
+
+class UnitMember(Base):
+    __tablename__ = "unit_members"
+    __table_args__ = (UniqueConstraint("unit_id", "user_id", name="uq_unit_member"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    unit_id: Mapped[str] = mapped_column(String, ForeignKey("units.id"), index=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship("User", lazy="selectin")
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "user_id": self.user_id,
+                "name": self.user.name if self.user else None,
+                "email": self.user.email if self.user else None}
 
 
 class Reservation(Base):

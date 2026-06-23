@@ -15,7 +15,7 @@ from core.database import get_db, AsyncSessionLocal
 from models import (User, Charger, Session, Reservation, PaymentMethod,
                     DisbursementAccount, PaymentTransaction, DisbursementRecord,
                     PendingCharge, LedgerEntry, ChargerBrandProfile, OwnerEvent, ChargerRating,
-                    WalletTransaction)
+                    WalletTransaction, UnitMember)
 from core.auth import get_current_user, hash_password, verify_password, create_token
 import services.wompi as wompi_svc
 import services.sim as sim_mgr
@@ -411,6 +411,14 @@ async def initiate_payment(
     charger = await db.get(Charger, body.charger_id)
     if not charger:
         raise HTTPException(400, "Cargador no disponible")
+    # Cargador privado de una unidad: solo miembros (o el dueño) pueden cargar.
+    if charger.unit_id and charger.owner_id != current_user.id:
+        is_member = (await db.execute(
+            select(UnitMember.id).where(UnitMember.unit_id == charger.unit_id,
+                                        UnitMember.user_id == current_user.id).limit(1)
+        )).scalar()
+        if not is_member:
+            raise HTTPException(403, "Cargador privado — solo residentes de la unidad pueden cargar.")
     # Bloquear si el dueño tiene la mensualidad de plataforma suspendida
     if charger.owner_id:
         owner = await db.get(User, charger.owner_id)
