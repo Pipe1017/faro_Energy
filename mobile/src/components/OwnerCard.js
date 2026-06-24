@@ -28,7 +28,6 @@ export function OwnerCard({ item }) {
     <View style={[styles.card, styles.cardMine]}>
       <View style={styles.cardHeader}>
         <View style={[styles.dot, { backgroundColor: color }]} />
-        {item.icon ? <Text style={{ fontSize: 16, marginRight: 4 }}>{item.icon}</Text> : null}
         <Text style={styles.chargerId} numberOfLines={1}>{item.name || item.id}</Text>
         <Text style={[styles.statusText, { color, fontSize: 12 }]}>{item.status}</Text>
       </View>

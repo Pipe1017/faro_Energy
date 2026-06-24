@@ -15,7 +15,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 // ── Módulos extraídos (ver src/) ──
 import { T, STATUS_COLOR } from './src/theme';
 import { API_URL, apiFetch, apiUpload } from './src/api';
-import { MEDELLIN, formatElapsed, IVA_RATE, PLATFORM_MARGIN, CHARGER_ICONS } from './src/constants';
+import { MEDELLIN, formatElapsed, IVA_RATE, PLATFORM_MARGIN } from './src/constants';
 import { AppCtx } from './src/context/AppContext';
 import { MiUsoScreen } from './src/screens/MiUsoScreen';
 import { NegocioScreen } from './src/screens/NegocioScreen';
@@ -98,6 +98,7 @@ export default function App() {
   const [tab, setTab]               = useState('mapa');
   const [search, setSearch]         = useState('');
   const [mapSearch, setMapSearch]   = useState('');
+  const [modelSearch, setModelSearch] = useState('');  // buscador de modelo en el form
   const [geoResults, setGeoResults] = useState([]);  // resultados de lugares reales
   const [zoom, setZoom]             = useState('mid');
   const [mapRegion, setMapRegion]   = useState(null);  // región visible (para culling en Android)
@@ -1132,7 +1133,7 @@ export default function App() {
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <View style={[styles.dot, { backgroundColor: color, width: 10, height: 10, borderRadius: 5 }]} />
-                  <Text style={styles.mapPanelId} numberOfLines={1}>{c.icon ? c.icon + ' ' : ''}{c.name || c.id}</Text>
+                  <Text style={styles.mapPanelId} numberOfLines={1}>{c.name || c.id}</Text>
                   {mine && <View style={styles.mineBadge}><Text style={styles.mineText}>Mi cargador</Text></View>}
                 </View>
                 <Text style={styles.mapPanelLocation}>{c.location}</Text>
@@ -1463,7 +1464,7 @@ export default function App() {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={[styles.dot, { backgroundColor: color, width: 10, height: 10, borderRadius: 5 }]} />
-                    <Text style={styles.mapPanelId} numberOfLines={1}>{c.icon ? c.icon + ' ' : ''}{c.name || c.id}</Text>
+                    <Text style={styles.mapPanelId} numberOfLines={1}>{c.name || c.id}</Text>
                     {mine && <View style={styles.mineBadge}><Text style={styles.mineText}>Mi cargador</Text></View>}
                   </View>
                   <Text style={styles.mapPanelLocation}>{c.location}</Text>
@@ -1905,23 +1906,12 @@ export default function App() {
               <Text style={styles.mapPanelLocation}>{chargerForm.id ? 'Edita los datos y el precio de tu cargador.' : 'Te asignaremos un ID único (FARO-XXXX) y la URL para configurar tu equipo.'}</Text>
 
               <View style={{ gap: 10, marginTop: 16 }}>
-                {/* Nombre personalizado + ícono (set curado) */}
+                {/* Nombre personalizado */}
                 <View>
                   <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>Nombre (opcional)</Text>
                   <TextInput style={styles.input} placeholder="Ej: Casa, Torre 2, Café del parque…"
                     placeholderTextColor={T.textMuted} value={chargerForm.name}
                     onChangeText={v => setChargerForm(f => ({ ...f, name: v }))} maxLength={28} />
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    {CHARGER_ICONS.map(ic => (
-                      <TouchableOpacity key={ic}
-                        onPress={() => setChargerForm(f => ({ ...f, icon: f.icon === ic ? '' : ic }))}
-                        style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-                          backgroundColor: chargerForm.icon === ic ? T.greenFaint : T.surface,
-                          borderWidth: 1, borderColor: chargerForm.icon === ic ? T.greenDark : T.cardBorder }}>
-                        <Text style={{ fontSize: 20 }}>{ic}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                 </View>
 
                 {/* Acceso: público o privado (unidad) */}
@@ -1937,7 +1927,7 @@ export default function App() {
                       <TouchableOpacity key={u.id}
                         style={[styles.roleBtn, chargerForm.unit_id === u.id && styles.roleBtnActive]}
                         onPress={() => setChargerForm(f => ({ ...f, unit_id: u.id }))}>
-                        <Text style={[styles.roleBtnText, chargerForm.unit_id === u.id && styles.roleBtnTextActive]}>🏠 {u.name}</Text>
+                        <Text style={[styles.roleBtnText, chargerForm.unit_id === u.id && styles.roleBtnTextActive]}>{u.name}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -1953,31 +1943,15 @@ export default function App() {
                 {/* Modelo / referencia del catálogo (con foto, descripción y recomendaciones) */}
                 {brandProfiles.length > 0 && (() => {
                   const sel = brandProfiles.find(b => b.id === chargerForm.brand_profile_id);
+                  const q = modelSearch.trim().toLowerCase();
+                  const filtered = (q
+                    ? brandProfiles.filter(b => `${b.display_name} ${b.vendor || ''} ${b.model || ''}`.toLowerCase().includes(q))
+                    : brandProfiles).slice(0, 20);
                   return (
                   <View>
                     <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>Modelo / referencia (opcional)</Text>
-                    <View style={[styles.roleRow, { flexWrap: 'wrap' }]}>
-                      {brandProfiles.map(bp => (
-                        <TouchableOpacity key={bp.id}
-                          style={[styles.roleBtn, chargerForm.brand_profile_id === bp.id && styles.roleBtnActive]}
-                          onPress={() => setChargerForm(f => {
-                            const selecting = f.brand_profile_id !== bp.id;
-                            return {
-                              ...f,
-                              brand_profile_id: selecting ? bp.id : null,
-                              // al elegir, prefill de potencia/conector si están vacíos
-                              ...(selecting ? {
-                                power_kw: f.power_kw || (bp.max_power_kw != null ? String(bp.max_power_kw) : ''),
-                                connector_type: f.connector_type || (bp.connector_types && bp.connector_types[0]) || 'Type 2',
-                              } : {}),
-                            };
-                          })}>
-                          <Text style={[styles.roleBtnText, chargerForm.brand_profile_id === bp.id && styles.roleBtnTextActive]}>{bp.display_name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
                     {sel ? (
-                      <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, marginTop: 8, borderWidth: 1, borderColor: T.cardBorder }}>
+                      <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: T.greenDark }}>
                         {sel.photos?.length > 0 && (
                           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                             {sel.photos.map(p => (
@@ -1992,13 +1966,43 @@ export default function App() {
                           {[sel.vendor, sel.max_power_kw ? `${sel.max_power_kw} kW` : null, (sel.connector_types || []).join(', ')].filter(Boolean).join(' · ')}
                         </Text>
                         {sel.description ? <Text style={{ color: T.textSec, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{sel.description}</Text> : null}
-                        {sel.recommendations ? <Text style={{ color: T.green, fontSize: 11.5, marginTop: 6, lineHeight: 16 }}>💡 {sel.recommendations}</Text> : null}
+                        {sel.recommendations ? <Text style={{ color: T.green, fontSize: 11.5, marginTop: 6, lineHeight: 16 }}>{sel.recommendations}</Text> : null}
                         {sel.setup_guide_md ? <Text style={{ color: T.textMuted, fontSize: 10.5, marginTop: 6 }} numberOfLines={4}>{sel.setup_guide_md}</Text> : null}
+                        <TouchableOpacity style={{ marginTop: 10, alignSelf: 'flex-start' }} onPress={() => { setChargerForm(f => ({ ...f, brand_profile_id: null })); setModelSearch(''); }}>
+                          <Text style={{ color: T.green, fontSize: 12, fontWeight: '700' }}>Cambiar modelo</Text>
+                        </TouchableOpacity>
                       </View>
                     ) : (
-                      <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 4 }}>
-                        Elige la referencia de tu cargador: te mostramos foto, recomendaciones y la guía de conexión. También la detectamos sola cuando el equipo se conecte.
-                      </Text>
+                      <View>
+                        <TextInput style={styles.input} placeholder="Buscar modelo o marca…"
+                          placeholderTextColor={T.textMuted} value={modelSearch} onChangeText={setModelSearch} autoCapitalize="none" />
+                        <View style={{ borderWidth: 1, borderColor: T.cardBorder, borderRadius: 10, marginTop: 6, overflow: 'hidden' }}>
+                          {filtered.length === 0 ? (
+                            <Text style={{ color: T.textMuted, fontSize: 12, padding: 12 }}>Sin resultados.</Text>
+                          ) : filtered.map((bp, i) => (
+                            <TouchableOpacity key={bp.id}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9,
+                                borderTopWidth: i === 0 ? 0 : 1, borderTopColor: T.cardBorder, backgroundColor: i % 2 ? T.surface : T.card }}
+                              onPress={() => setChargerForm(f => ({
+                                ...f, brand_profile_id: bp.id,
+                                power_kw: f.power_kw || (bp.max_power_kw != null ? String(bp.max_power_kw) : ''),
+                                connector_type: f.connector_type || (bp.connector_types && bp.connector_types[0]) || 'Type 2',
+                              }))}>
+                              {bp.photos?.[0]
+                                ? <Image source={{ uri: `${API_URL}${bp.photos[0].url}` }} style={{ width: 38, height: 30, borderRadius: 6, backgroundColor: T.surface }} />
+                                : <View style={{ width: 38, height: 30, borderRadius: 6, backgroundColor: T.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: T.cardBorder }}><Feather name="zap" size={14} color={T.textMuted} /></View>}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: T.textPri, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{bp.display_name}</Text>
+                                <Text style={{ color: T.textMuted, fontSize: 10.5 }} numberOfLines={1}>{[bp.vendor, bp.max_power_kw ? `${bp.max_power_kw} kW` : null].filter(Boolean).join(' · ')}</Text>
+                              </View>
+                              <Feather name="chevron-right" size={15} color={T.textMuted} />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 4 }}>
+                          {brandProfiles.length > 20 && !q ? `Mostrando 20 de ${brandProfiles.length}. Escribe para buscar.` : 'Opcional. También se detecta sola cuando el equipo se conecte.'}
+                        </Text>
+                      </View>
                     )}
                   </View>
                   );
