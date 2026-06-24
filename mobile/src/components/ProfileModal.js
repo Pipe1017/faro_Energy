@@ -113,7 +113,7 @@ export function ProfileModal() {
               <TextInput style={styles.input} placeholder="Contraseña actual" placeholderTextColor={T.textMuted} secureTextEntry value={cur} onChangeText={setCur} />
               <TextInput style={styles.input} placeholder="Nueva contraseña" placeholderTextColor={T.textMuted} secureTextEntry value={nw} onChangeText={setNw} />
               <TextInput style={styles.input} placeholder="Confirmar nueva" placeholderTextColor={T.textMuted} secureTextEntry value={cf} onChangeText={setCf} />
-              <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={onChangePw} disabled={pwBusy}>
+              <TouchableOpacity style={[styles.btn, styles.btnStart]} onPress={onChangePw} disabled={pwBusy}>
                 {pwBusy ? <ActivityIndicator size="small" color="#fdfbf7" /> : <Text style={styles.btnText}>Actualizar contraseña</Text>}
               </TouchableOpacity>
             </View>

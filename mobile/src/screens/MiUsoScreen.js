@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { T } from '../theme';
 import { styles } from '../styles';
@@ -12,11 +12,14 @@ export function MiUsoScreen() {
     wallet, myUsage, reservations, sessionsShown, paymentMethods, token,
     setRecargaAmount, setRecargaModal, requestRefund, cancelReservation,
     setSessionDetail, setSessionsShown, setRenameModal, fetchPaymentMethods, setAddMethodModal,
-    setJoinUnitModal,
+    setJoinUnitModal, refreshMiUso,
   } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => { setRefreshing(true); try { await refreshMiUso(); } finally { setRefreshing(false); } };
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.green} />}>
       {/* Mi saldo (wallet prepago) */}
       <View style={{ backgroundColor: T.card, borderRadius: 16, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: T.cardBorder }}>
         <Text style={{ color: T.textMuted, fontSize: 12, fontWeight: '600', letterSpacing: 0.5 }}>MI SALDO</Text>

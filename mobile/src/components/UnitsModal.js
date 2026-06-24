@@ -101,7 +101,7 @@ export function UnitsModal() {
                       <TextInput style={[styles.input, { flex: 1, marginTop: 0 }]} placeholder="Correo del residente"
                         placeholderTextColor={T.textMuted} value={email} onChangeText={setEmail}
                         autoCapitalize="none" keyboardType="email-address" />
-                      <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 0, paddingHorizontal: 14 }]} onPress={() => onAddMember(u.id)} disabled={busy}>
+                      <TouchableOpacity style={[styles.btn, styles.btnStart, { marginTop: 0, paddingHorizontal: 14 }]} onPress={() => onAddMember(u.id)} disabled={busy}>
                         {busy ? <ActivityIndicator size="small" color="#fdfbf7" /> : <Text style={styles.btnText}>Agregar</Text>}
                       </TouchableOpacity>
                     </View>

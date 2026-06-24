@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Linking, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { T } from '../theme';
 import { styles } from '../styles';
@@ -13,11 +13,14 @@ export function NegocioScreen() {
     ownerEvents, setOwnerEvents, mySubscription, setMySubscription, paymentMethods,
     fetchPaymentMethods, setAddMethodModal, myStats, balance, withdrawing, withdrawBalance,
     myDisburses, disbAccount, verifyDisbAccount, setDisbForm, setAddDisbModal,
-    earnings, ownerSessionsShown, setOwnerSessionsShown, token,
+    earnings, ownerSessionsShown, setOwnerSessionsShown, token, refreshNegocio,
   } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => { setRefreshing(true); try { await refreshNegocio(); } finally { setRefreshing(false); } };
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.green} />}>
 
       {/* Alertas del dueño */}
       {ownerEvents?.events?.length > 0 && (

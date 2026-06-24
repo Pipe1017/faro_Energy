@@ -838,6 +838,21 @@ export default function App() {
   ]);
   const joinUnit = async (code) => { const r = await apiFetch('/units/join', { method: 'POST', body: JSON.stringify({ code }) }, token); fetchMemberships(); fetchStatus(); return r; };
 
+  // Pull-to-refresh por pantalla (re-consulta los datos de esa sección).
+  const refreshMiUso = async () => {
+    await Promise.all([fetchMyUsage(), fetchWallet(), fetchPaymentMethods(), fetchReservations()]);
+  };
+  const refreshNegocio = async () => {
+    await Promise.all([
+      fetchEarnings(), fetchDisbAccount(), fetchPaymentMethods(), fetchUnits(),
+      apiFetch('/my-disbursements', {}, token).then(setMyDisburses).catch(() => {}),
+      apiFetch('/my-balance', {}, token).then(setBalance).catch(() => {}),
+      apiFetch('/my-events', {}, token).then(setOwnerEvents).catch(() => {}),
+      apiFetch('/my-subscription', {}, token).then(setMySubscription).catch(() => {}),
+      apiFetch('/my-stats?period=week', {}, token).then(setMyStats).catch(() => {}),
+    ]);
+  };
+
   // "Dar de baja" = archivar (soft-delete): sale del mapa y de la lista activa, se
   // conserva todo (ID, historial) y queda minimizado al final para reactivar.
   const deleteCharger = (c) => {
@@ -1071,6 +1086,8 @@ export default function App() {
     // Perfil
     profileModal, setProfileModal, updateName, changePassword, uploadAvatar, removeAvatar,
     handleLogout, avatarBust,
+    // Refresh por pantalla
+    refreshMiUso, refreshNegocio,
     editingPrice, newPrice, setNewPrice, setEditingPrice, savePrice, openEditCharger,
     chargerPhotos, photoBusy, addPhoto, removePhoto, photoUri, setPhotoView,
     togglePause, deleteCharger, fetchEarnings,
