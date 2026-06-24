@@ -1,7 +1,7 @@
 import React, { memo, useState, useEffect, useRef } from 'react';
 import { View, Text, Platform, Animated } from 'react-native';
 import { Marker } from 'react-native-maps';
-import { T, STATUS_COLOR } from '../theme';
+import { T, ACCESS_COLOR } from '../theme';
 
 // MARCADORES SOLO View+Text (sin SVG ni íconos de fuente — en Android desaparecen
 // dentro de un <Marker>).
@@ -42,8 +42,10 @@ function useFreeze(deps) {
   return tracks;
 }
 
-export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
-  const color   = STATUS_COLOR[charger.status] || T.offline;
+export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom, access }) => {
+  // El color del pin identifica el ACCESO (público/unidad/restringido). El estado
+  // (offline/charging) se ve por la opacidad y el centro del pin.
+  const color   = ACCESS_COLOR[access] || ACCESS_COLOR.public;
   const price   = Math.round((charger.price_per_kwh_now ?? charger.price_per_kwh ?? 0) * 1.19);
   const isCharg = charger.status === 'Charging';
   const isDown  = charger.status === 'Offline' || charger.status === 'Unavailable' || charger.status === 'Faulted';
@@ -55,7 +57,7 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
 
   const tracks = useFreeze([
     charger.status, charger.price_per_kwh, charger.price_per_kwh_now,
-    charger.power_kw, charger.connector_type, isSelected, isMine, showBubble,
+    charger.power_kw, charger.connector_type, isSelected, isMine, showBubble, access,
   ]);
 
   // "Pop" SOLO en el marcador seleccionado (uno a la vez → barato). Ocurre dentro de
@@ -115,5 +117,6 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom 
   prev.charger.connector_type === next.charger.connector_type &&
   prev.isSelected === next.isSelected &&
   prev.isMine === next.isMine &&
-  prev.zoom === next.zoom
+  prev.zoom === next.zoom &&
+  prev.access === next.access
 );

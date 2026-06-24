@@ -13,7 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 // ── Módulos extraídos (ver src/) ──
-import { T, STATUS_COLOR } from './src/theme';
+import { T, STATUS_COLOR, ACCESS_COLOR, ACCESS_LABEL } from './src/theme';
 import { API_URL, apiFetch, apiUpload } from './src/api';
 import { MEDELLIN, formatElapsed, IVA_RATE, PLATFORM_MARGIN } from './src/constants';
 import { AppCtx } from './src/context/AppContext';
@@ -1190,6 +1190,16 @@ export default function App() {
               )}
               {c.owner && <View style={styles.specChip}><Text style={styles.specText}>{c.owner}</Text></View>}
             </View>
+            {/* Acceso (unidad) */}
+            {c.private && (() => {
+              const access = c.owner_id === user?.id || (myUnitIds || []).includes(c.unit_id) ? 'member' : 'restricted';
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginBottom: 8, backgroundColor: access === 'member' ? T.chargingBg : T.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: ACCESS_COLOR[access] + '55' }}>
+                  <Feather name={access === 'member' ? 'unlock' : 'lock'} size={12} color={ACCESS_COLOR[access]} />
+                  <Text style={{ color: ACCESS_COLOR[access], fontSize: 11.5, fontWeight: '700' }}>{ACCESS_LABEL[access]}</Text>
+                </View>
+              );
+            })()}
             {/* Fotos del cargador (las subió el dueño) */}
             {(() => {
               const photos = chargerPhotos[c.id] || [];
@@ -1525,6 +1535,16 @@ export default function App() {
                   <View style={styles.specChip}><Text style={styles.specText}>👍 {c.rating_pct}% ({c.rating_total})</Text></View>
                 )}
               </View>
+              {/* Acceso (unidad) */}
+              {c.private && (() => {
+                const access = c.owner_id === user?.id || (myUnitIds || []).includes(c.unit_id) ? 'member' : 'restricted';
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginBottom: 10, backgroundColor: access === 'member' ? T.chargingBg : T.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: ACCESS_COLOR[access] + '55' }}>
+                    <Feather name={access === 'member' ? 'unlock' : 'lock'} size={13} color={ACCESS_COLOR[access]} />
+                    <Text style={{ color: ACCESS_COLOR[access], fontSize: 12, fontWeight: '700' }}>{ACCESS_LABEL[access]}</Text>
+                  </View>
+                );
+              })()}
 
               {/* Fotos del cargador (las subió el dueño) */}
               {(() => {

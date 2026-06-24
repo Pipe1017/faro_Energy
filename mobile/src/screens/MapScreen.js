@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Keyboard, Platform } from 'react-native';
 import MapView from 'react-native-maps';
 import { Feather } from '@expo/vector-icons';
-import { T, STATUS_COLOR } from '../theme';
+import { T, STATUS_COLOR, ACCESS_COLOR } from '../theme';
 import { styles } from '../styles';
 import { MEDELLIN } from '../constants';
 import { ChargerMarker } from '../components/ChargerMarker';
@@ -13,11 +13,15 @@ import { useApp } from '../context/AppContext';
 // Los paneles flotantes (mapPanel / sheet) viven en App como overlays globales.
 export function MapScreen() {
   const {
-    mapRef, locStatus, inView, chargers, zoom,
+    mapRef, locStatus, inView, chargers, zoom, myUnitIds,
     selectedCharger, isOwner, user, tapCharger, mapOverlayOpen, mapSearch, setMapSearch,
     geoResults, setGeoResults, mapSearchResults, setSelectedCharger, setChargerPanel,
     activeSession, goToNearest, locLoading, setMapRegion, setZoom,
   } = useApp();
+
+  // Acceso de cada cargador: público / con acceso (miembro o dueño) / restringido.
+  const accessOf = (c) => !c.private ? 'public'
+    : (c.owner_id === user?.id || (myUnitIds || []).includes(c.unit_id)) ? 'member' : 'restricted';
 
   return (
     <View style={{ flex: 1 }}>
@@ -38,7 +42,7 @@ export function MapScreen() {
         {/* Solo cargadores Faro. Lejos → punto; cerca o seleccionado → burbuja con
             precio (evita la "montonera" al alejar). */}
         {chargers.filter(c => c.lat && c.lng && inView(c.lat, c.lng)).map(c => (
-          <ChargerMarker key={c.id} charger={c} zoom={zoom}
+          <ChargerMarker key={c.id} charger={c} zoom={zoom} access={accessOf(c)}
             isSelected={selectedCharger?.id === c.id}
             isMine={isOwner && c.owner_id === user?.id}
             onPress={() => tapCharger(c)} />
@@ -138,6 +142,18 @@ export function MapScreen() {
             ? <ActivityIndicator size="small" color="#fdfbf7" />
             : <Feather name="navigation" size={22} color="#fdfbf7" />}
         </TouchableOpacity>
+      )}
+
+      {/* Leyenda de acceso (color del pin) */}
+      {!mapOverlayOpen && (
+        <View style={{ position: 'absolute', bottom: 8, left: 8, flexDirection: 'row', gap: 10, backgroundColor: 'rgba(250,247,241,0.92)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1, borderColor: T.cardBorder }}>
+          {[['public', 'Público'], ['member', 'Mi unidad'], ['restricted', 'Restringido']].map(([k, l]) => (
+            <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: ACCESS_COLOR[k] }} />
+              <Text style={{ color: T.textSec, fontSize: 9.5, fontWeight: '600' }}>{l}</Text>
+            </View>
+          ))}
+        </View>
       )}
 
     </View>

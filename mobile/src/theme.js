@@ -35,6 +35,21 @@ export const T = {
   headerOwner:  '#f7ead8',
 };
 
+// Color por tipo de ACCESO del cargador (identificación en el mapa):
+//   public     → cobre (café): cualquiera puede cargar
+//   member     → índigo (azul): privado de una unidad a la que tienes acceso
+//   restricted → espresso (negro): privado, sin acceso (solo residentes)
+export const ACCESS_COLOR = {
+  public:     T.green,
+  member:     T.charging,
+  restricted: T.textPri,
+};
+export const ACCESS_LABEL = {
+  public:     'Público',
+  member:     'Unidad · tienes acceso',
+  restricted: 'Acceso restringido por administración',
+};
+
 export const STATUS_COLOR = {
   Available: T.green,      // gold
   Charging:  T.charging,   // púrpura
