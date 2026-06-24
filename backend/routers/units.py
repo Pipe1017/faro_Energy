@@ -53,7 +53,10 @@ async def create_unit(body: UnitBody, current_user: User = Depends(get_current_u
     await db.flush()
     db.add(UnitMember(unit_id=unit.id, user_id=current_user.id))  # el dueño es miembro
     await db.commit()
-    return unit.to_dict()
+    # Re-consultar para que la relación 'members' (lazy=selectin) quede cargada y
+    # to_dict no dispare un lazy-load en async (que falla / da 500).
+    unit = (await db.execute(select(Unit).where(Unit.id == unit.id))).scalar_one()
+    return unit.to_dict(chargers_count=0)
 
 
 @router.get("/my-units")
