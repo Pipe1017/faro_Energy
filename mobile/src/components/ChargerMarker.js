@@ -42,17 +42,20 @@ function useFreeze(deps) {
   return tracks;
 }
 
-export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => {
+export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress, zoom }) => {
   const color   = STATUS_COLOR[charger.status] || T.offline;
   const price   = Math.round((charger.price_per_kwh_now ?? charger.price_per_kwh ?? 0) * 1.19);
   const isCharg = charger.status === 'Charging';
   const isDown  = charger.status === 'Offline' || charger.status === 'Unavailable' || charger.status === 'Faulted';
   const specs   = [charger.power_kw ? `${charger.power_kw} kW` : null, charger.connector_type]
                     .filter(Boolean).join(' · ');
+  // Burbuja con precio SOLO cerca o si está seleccionado. Lejos/medio → solo el punto
+  // (evita la "montonera" al alejar el mapa). El foco define qué se muestra.
+  const showBubble = isSelected || zoom === 'close';
 
   const tracks = useFreeze([
     charger.status, charger.price_per_kwh, charger.price_per_kwh_now,
-    charger.power_kw, charger.connector_type, isSelected, isMine,
+    charger.power_kw, charger.connector_type, isSelected, isMine, showBubble,
   ]);
 
   // "Pop" SOLO en el marcador seleccionado (uno a la vez → barato). Ocurre dentro de
@@ -73,8 +76,8 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
       zIndex={isSelected ? 9 : 5}>
       {/* padding de respiro: evita que el borde del snapshot recorte la vista en Android */}
       <Animated.View style={{ alignItems: 'center', padding: 4, transform: [{ scale: pop }] }} collapsable={false}>
-        {/* Burbuja: precio + potencia + enchufe */}
-        {(price > 0 || specs) && (
+        {/* Burbuja: precio + potencia + enchufe — solo cerca o seleccionado */}
+        {showBubble && (price > 0 || specs) && (
           <View style={{ backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 7, paddingVertical: 3,
             marginBottom: 3, borderWidth: 1, borderColor: color, alignItems: 'center',
             elevation: 0, ...softShadow }}>
@@ -111,25 +114,6 @@ export const ChargerMarker = memo(({ charger, isSelected, isMine, onPress }) => 
   prev.charger.power_kw === next.charger.power_kw &&
   prev.charger.connector_type === next.charger.connector_type &&
   prev.isSelected === next.isSelected &&
-  prev.isMine === next.isMine
+  prev.isMine === next.isMine &&
+  prev.zoom === next.zoom
 );
-
-// Cargador externo (Open Charge Map) — pastilla NEGRA con la potencia, capa de abajo.
-export const ExternalMarker = memo(({ charger, onPress }) => {
-  const tracks = useFreeze([charger.power_kw]);
-  return (
-    <Marker coordinate={{ latitude: charger.lat, longitude: charger.lng }}
-      onPress={onPress} tracksViewChanges={tracks} anchor={{ x: 0.5, y: 0.5 }}
-      zIndex={0} opacity={0.95}>
-      {/* padding de respiro para que Android no recorte la pastilla */}
-      <View style={{ padding: 4 }} collapsable={false}>
-        <View style={{ backgroundColor: '#2b2520', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
-          borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' }}>
-          <Text style={{ color: '#faf7f1', fontSize: 9.5, fontWeight: '700' }}>
-            {charger.power_kw ? `${charger.power_kw} kW` : '·'}
-          </Text>
-        </View>
-      </View>
-    </Marker>
-  );
-}, (prev, next) => prev.charger.id === next.charger.id && prev.charger.power_kw === next.charger.power_kw);

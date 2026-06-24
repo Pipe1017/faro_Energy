@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { T, STATUS_COLOR } from '../theme';
 import { styles } from '../styles';
 import { MEDELLIN } from '../constants';
-import { ChargerMarker, ExternalMarker } from '../components/ChargerMarker';
+import { ChargerMarker } from '../components/ChargerMarker';
 import { useApp } from '../context/AppContext';
 
 // Pantalla del mapa: MapView + marcadores (faros + externos OCM con culling en Android),
@@ -13,7 +13,7 @@ import { useApp } from '../context/AppContext';
 // Los paneles flotantes (mapPanel / sheet) viven en App como overlays globales.
 export function MapScreen() {
   const {
-    mapRef, locStatus, externalChargers, inView, setExternalPick, chargers,
+    mapRef, locStatus, inView, chargers, zoom,
     selectedCharger, isOwner, user, tapCharger, mapOverlayOpen, mapSearch, setMapSearch,
     geoResults, setGeoResults, mapSearchResults, setSelectedCharger, setChargerPanel,
     activeSession, goToNearest, locLoading, setMapRegion, setZoom,
@@ -35,27 +35,15 @@ export function MapScreen() {
           else setZoom('close');
         }}
       >
-        {/* Externos (OCM): pastilla negra con potencia, capa de abajo. En Android
-            solo los visibles (culling) para que vuele; en iOS todos (cap 80). */}
-        {externalChargers.filter(e => inView(e.lat, e.lng))
-          .slice(0, Platform.OS === 'android' ? 40 : 80).map(e => (
-          <ExternalMarker key={e.id} charger={e} onPress={() => setExternalPick(e)} />
-        ))}
+        {/* Solo cargadores Faro. Lejos → punto; cerca o seleccionado → burbuja con
+            precio (evita la "montonera" al alejar). */}
         {chargers.filter(c => c.lat && c.lng && inView(c.lat, c.lng)).map(c => (
-          <ChargerMarker key={c.id} charger={c}
+          <ChargerMarker key={c.id} charger={c} zoom={zoom}
             isSelected={selectedCharger?.id === c.id}
             isMine={isOwner && c.owner_id === user?.id}
             onPress={() => tapCharger(c)} />
         ))}
       </MapView>
-
-      {/* Crédito Open Charge Map (requerido por su licencia) */}
-      {externalChargers.length > 0 && !mapOverlayOpen && (
-        <Text style={{ position: 'absolute', bottom: 6, left: 8, fontSize: 9, color: T.textMuted,
-          backgroundColor: 'rgba(250,247,241,0.7)', paddingHorizontal: 5, borderRadius: 4 }}>
-          Cargadores no-Faro: Open Charge Map
-        </Text>
-      )}
 
       {/* ── Buscador flotante estilo maps (oculto si hay panel/modal encima) ── */}
       {!mapOverlayOpen && (

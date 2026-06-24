@@ -25,7 +25,7 @@ import { MapScreen } from './src/screens/MapScreen';
 import { KbSheet } from './src/hooks';
 import { useUserLocation, nearestCharger, openDirections, formatDistance, haversineKm } from './src/geo';
 import { FaroLogo } from './src/components/FaroLogo';
-import { ChargerMarker, ExternalMarker } from './src/components/ChargerMarker';
+import { ChargerMarker } from './src/components/ChargerMarker';
 import { AuthScreen } from './src/components/AuthScreen';
 import { BootSplash } from './src/components/BootSplash';
 import { SlideUp } from './src/components/SlideUp';
@@ -115,8 +115,6 @@ export default function App() {
   const [chargerPhotos, setChargerPhotos] = useState({});       // { [chargerId]: [{id,url}] } fotos del cargador
   const [photoBusy, setPhotoBusy] = useState(null);             // id del cargador subiendo foto
   const [photoView, setPhotoView] = useState(null);             // {url} foto en pantalla completa
-  const [externalChargers, setExternalChargers] = useState([]); // OCM: públicos que aún no son Faro
-  const [externalPick, setExternalPick] = useState(null);       // pin externo tocado
   const [qrModal, setQrModal]       = useState(null);
   const [qrScanning, setQrScanning] = useState(false);
   const [myUsage, setMyUsage]       = useState(null);
@@ -416,9 +414,6 @@ export default function App() {
     if (tab === 'miuso')   { fetchMyUsage(); fetchPaymentMethods(); fetchWallet(); }
     if (tab === 'lista' && isOwner) { fetchArchivedChargers(); fetchUnits(); }
     if (!isOwner && token) { fetchPaymentMethods(); fetchWallet(); fetchMemberships(); }
-    if (tab === 'mapa' && externalChargers.length === 0) {
-      apiFetch('/external-chargers', {}, token).then(d => setExternalChargers(d.chargers || [])).catch(() => {});
-    }
   }, [tab, token]);
 
 
@@ -1092,7 +1087,7 @@ export default function App() {
     chargerPhotos, photoBusy, addPhoto, removePhoto, photoUri, setPhotoView,
     togglePause, deleteCharger, fetchEarnings,
     // Mapa
-    mapRef, locStatus, externalChargers, inView, setExternalPick, chargers,
+    mapRef, locStatus, inView, chargers, zoom,
     selectedCharger, isOwner, user, tapCharger, mapOverlayOpen, mapSearch, setMapSearch,
     geoResults, setGeoResults, mapSearchResults, setSelectedCharger, setChargerPanel,
     activeSession, goToNearest, locLoading, setMapRegion, setZoom,
@@ -2331,51 +2326,6 @@ export default function App() {
             <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 10 }]} onPress={() => setSessionDetail(null)}>
               <Text style={[styles.btnText, { color: T.textMuted }]}>Cerrar</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* ── Cargador externo (no-Faro) tocado ── */}
-      {externalPick && (
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setExternalPick(null)} activeOpacity={1} />
-          <View style={styles.modal}>
-            <View style={styles.mapPanelHandle} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <View style={{ backgroundColor: '#2b2520', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                <Text style={{ color: '#faf7f1', fontSize: 10, fontWeight: '700' }}>{externalPick.power_kw ? `${externalPick.power_kw} kW` : 'no-Faro'}</Text>
-              </View>
-              <Text style={styles.modalTitle}>{externalPick.title}</Text>
-            </View>
-            <Text style={styles.mapPanelLocation}>
-              {externalPick.operator ? externalPick.operator + ' · ' : ''}{externalPick.address || externalPick.town || 'Colombia'}
-            </Text>
-            {/* Specs disponibles del externo */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-              {externalPick.power_kw && <View style={styles.specChip}><Text style={styles.specText}>⚡ {externalPick.power_kw} kW</Text></View>}
-              {externalPick.connector && <View style={styles.specChip}><Text style={styles.specText}>{externalPick.connector}</Text></View>}
-              {externalPick.connections > 1 && <View style={styles.specChip}><Text style={styles.specText}>{externalPick.connections} conectores</Text></View>}
-            </View>
-            <View style={{ backgroundColor: T.surface, borderRadius: 10, padding: 12, marginTop: 12, borderWidth: 1, borderColor: T.cardBorder }}>
-              <Text style={{ color: T.textSec, fontSize: 13, lineHeight: 19 }}>
-                Cargador público <Text style={{ fontWeight: '700', color: T.textPri }}>que aún no es parte de Faro</Text>.
-                Con Faro tendrías: pago con saldo, precio claro y reparto automático.
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnStart, { marginTop: 14 }]}
-              onPress={() => {
-                setExternalPick(null);
-                Linking.openURL('mailto:faro.energy.26@gmail.com?subject=Quiero%20unir%20mi%20cargador%20a%20Faro&body=' +
-                  encodeURIComponent(`Hola, quiero unir este cargador a Faro:\n${externalPick.title}\n${externalPick.town || ''}\nUbicación: ${externalPick.lat}, ${externalPick.lng}`));
-              }}>
-              <Feather name="zap" size={15} color="#fdfbf7" />
-              <Text style={styles.btnText}>¿Es tuyo? Únete a Faro</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 10 }]} onPress={() => setExternalPick(null)}>
-              <Text style={[styles.btnText, { color: T.textMuted }]}>Cerrar</Text>
-            </TouchableOpacity>
-            <Text style={{ color: T.textMuted, fontSize: 10, textAlign: 'center', marginTop: 10 }}>Datos: Open Charge Map</Text>
           </View>
         </View>
       )}
