@@ -88,6 +88,7 @@ async def startup():
         ("ALTER TABLE chargers ADD COLUMN name TEXT",                                                 "name en chargers"),
         ("ALTER TABLE chargers ADD COLUMN icon TEXT",                                                 "icon en chargers"),
         ("ALTER TABLE chargers ADD COLUMN unit_id TEXT",                                              "unit_id en chargers"),
+        ("ALTER TABLE users ADD COLUMN avatar_key TEXT",                                              "avatar_key en users"),
     ]:
         try:
             async with engine.begin() as conn:

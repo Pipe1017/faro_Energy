@@ -3,8 +3,9 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response, Form, UploadFile, File
 from fastapi.responses import HTMLResponse
+from services import storage
 from pydantic import BaseModel
 from services import emailer
 from sqlalchemy import select, func
@@ -255,5 +256,74 @@ async def me(current_user: User = Depends(get_current_user)):
 
 def _user_dict(user: User) -> dict:
     return {"id": user.id, "name": user.name, "email": user.email, "role": user.role,
-            "email_verified": user.email_verified}
+            "email_verified": user.email_verified,
+            "avatar_url": f"/profile/avatar/{user.id}" if user.avatar_key else None}
+
+
+# ── PERFIL ────────────────────────────────────────────────────────────────────
+class UpdateProfileBody(BaseModel):
+    name: str
+
+@router.patch("/auth/me")
+async def update_profile(body: UpdateProfileBody, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    name = (body.name or "").strip()
+    if len(name) < 2:
+        raise HTTPException(400, "El nombre es muy corto")
+    current_user.name = name
+    await db.commit()
+    return _user_dict(current_user)
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.post("/auth/change-password")
+async def change_password(body: ChangePasswordBody, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(400, "La contraseña actual no es correcta")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "La nueva contraseña debe tener al menos 6 caracteres")
+    current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return {"ok": True}
+
+
+_AVATAR_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+@router.post("/auth/avatar")
+async def upload_avatar(file: UploadFile = File(...), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    ct = (file.content_type or "").lower()
+    if ct not in _AVATAR_EXT:
+        raise HTTPException(400, "Formato no soportado (JPG, PNG o WEBP)")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Archivo vacío")
+    if len(data) > 6 * 1024 * 1024:
+        raise HTTPException(400, "La imagen es muy pesada (máx 6 MB)")
+    key = f"avatars/{current_user.id}.{_AVATAR_EXT[ct]}"
+    storage.put_bytes(key, data, ct)
+    current_user.avatar_key = key
+    await db.commit()
+    return _user_dict(current_user)
+
+
+@router.delete("/auth/avatar")
+async def delete_avatar(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    current_user.avatar_key = None
+    await db.commit()
+    return _user_dict(current_user)
+
+
+@router.get("/profile/avatar/{user_id}")
+async def get_avatar(user_id: str, db: AsyncSession = Depends(get_db)):
+    # Público (sin token): lo carga <Image> por URL.
+    u = await db.get(User, user_id)
+    if not u or not u.avatar_key:
+        raise HTTPException(404, "Sin foto")
+    data = storage.get_bytes(u.avatar_key)
+    if data is None:
+        raise HTTPException(404, "Sin foto")
+    ct = "image/png" if u.avatar_key.endswith(".png") else "image/webp" if u.avatar_key.endswith(".webp") else "image/jpeg"
+    return Response(content=data, media_type=ct, headers={"Cache-Control": "no-cache"})
 

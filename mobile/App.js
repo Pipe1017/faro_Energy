@@ -32,6 +32,7 @@ import { SlideUp } from './src/components/SlideUp';
 import { PhotoViewer } from './src/components/PhotoViewer';
 import { UnitsModal } from './src/components/UnitsModal';
 import { JoinUnitModal } from './src/components/JoinUnitModal';
+import { ProfileModal } from './src/components/ProfileModal';
 import { styles } from './src/styles';
 
 export default function App() {
@@ -46,6 +47,8 @@ export default function App() {
   const [myUnitIds, setMyUnitIds]   = useState([]);   // unidades a las que pertenece el conductor
   const [unitsModal, setUnitsModal] = useState(false);
   const [joinUnitModal, setJoinUnitModal] = useState(false);
+  const [profileModal, setProfileModal] = useState(false);
+  const [avatarBust, setAvatarBust]     = useState(0);  // cache-buster del avatar
   const [refreshing, setRefreshing] = useState(false);
 
   const [earnings, setEarnings]         = useState(null);
@@ -169,6 +172,26 @@ export default function App() {
     setMyDisburses(null);
     setReservations([]);
     setTab('mapa');
+    setProfileModal(false);
+  };
+
+  // ── Perfil ──────────────────────────────────────────────────────────────────
+  const persistUser = async (u) => { setUser(u); try { await SecureStore.setItemAsync('user', JSON.stringify(u)); } catch {} };
+  const updateName = async (name) => { const u = await apiFetch('/auth/me', { method: 'PATCH', body: JSON.stringify({ name }) }, token); await persistUser(u); };
+  const changePassword = async (current_password, new_password) => {
+    await apiFetch('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }, token);
+  };
+  const removeAvatar = async () => { const u = await apiFetch('/auth/avatar', { method: 'DELETE' }, token); await persistUser(u); setAvatarBust(b => b + 1); };
+  const uploadAvatar = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('Permiso', 'Necesito acceso a tus fotos.'); return; }
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.6 });
+      if (r.canceled || !r.assets?.length) return;
+      const a = r.assets[0];
+      const u = await apiUpload('/auth/avatar', { uri: a.uri, name: a.fileName || 'avatar.jpg', type: a.mimeType || 'image/jpeg' }, token);
+      await persistUser(u); setAvatarBust(b => b + 1);
+    } catch (e) { Alert.alert('No se pudo subir', e.message); }
   };
 
   const fetchStatus = async (showSpinner = false) => {
@@ -1045,6 +1068,9 @@ export default function App() {
     // Unidades
     units, fetchUnits, createUnit, addMember, removeMember, deleteUnit,
     unitsModal, setUnitsModal, myUnitIds, joinUnit, joinUnitModal, setJoinUnitModal,
+    // Perfil
+    profileModal, setProfileModal, updateName, changePassword, uploadAvatar, removeAvatar,
+    handleLogout, avatarBust,
     editingPrice, newPrice, setNewPrice, setEditingPrice, savePrice, openEditCharger,
     chargerPhotos, photoBusy, addPhoto, removePhoto, photoUri, setPhotoView,
     togglePause, deleteCharger, fetchEarnings,
@@ -1075,12 +1101,11 @@ export default function App() {
             </View>
           </View>
           <TouchableOpacity
-            style={[styles.userBadge, isOwner && styles.userBadgeOwner]}
-            onPress={() => Alert.alert(user.name, `${user.email}`, [
-              { text: 'Cerrar sesión', style: 'destructive', onPress: handleLogout },
-              { text: 'Cancelar' }
-            ])}>
-            <Text style={styles.userInitial}>{user?.name?.[0]?.toUpperCase()}</Text>
+            style={[styles.userBadge, isOwner && styles.userBadgeOwner, { overflow: 'hidden' }]}
+            onPress={() => setProfileModal(true)}>
+            {user?.avatar_url
+              ? <Image source={{ uri: `${API_URL}${user.avatar_url}?v=${avatarBust}` }} style={{ width: '100%', height: '100%' }} />
+              : <Text style={styles.userInitial}>{user?.name?.[0]?.toUpperCase()}</Text>}
           </TouchableOpacity>
         </View>
 
@@ -2453,6 +2478,7 @@ export default function App() {
       {/* Unidades (dueño) y unirse a unidad (conductor) */}
       {unitsModal && <UnitsModal />}
       {joinUnitModal && <JoinUnitModal />}
+      {profileModal && <ProfileModal />}
 
       {/* Visor de foto a pantalla completa */}
       <PhotoViewer url={photoView?.url} onClose={() => setPhotoView(null)} />

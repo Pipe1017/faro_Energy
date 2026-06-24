@@ -43,6 +43,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String)   # el índice único (email, role) cubre las búsquedas
     name: Mapped[str] = mapped_column(String)
     password_hash: Mapped[str] = mapped_column(String)
+    avatar_key: Mapped[str | None] = mapped_column(String, nullable=True)   # foto de perfil en MinIO
     role: Mapped[str] = mapped_column(String)  # "conductor" | "owner"
     tag: Mapped[str | None] = mapped_column(String, unique=True, index=True, default=new_tag)  # idTag OCPP (corto, único)
     # Datos fiscales del dueño (para facturación por mandato y para decidir si la
